@@ -3,6 +3,8 @@ export type ActivityType = "walk" | "run" | "bike" | "vehicle";
 export type Tab = "home" | "activity" | "vehicle" | "history" | "profile";
 export type SpeedStatus = "normal" | "caution" | "over";
 export interface Measurement {
+  device_speed?: number | null;
+  break_before?: boolean;
   id: string;
   session_id: string;
   timestamp: number;

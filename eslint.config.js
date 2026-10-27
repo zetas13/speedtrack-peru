@@ -3,7 +3,16 @@ import ts from "typescript-eslint";
 import hooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 export default ts.config(
-  { ignores: ["dist/**", ".npm-cache/**", "node_modules/**", "android/**", "playwright-report/**", "test-results/**"] },
+  {
+    ignores: [
+      "dist/**",
+      ".npm-cache/**",
+      "node_modules/**",
+      "android/**",
+      "playwright-report/**",
+      "test-results/**",
+    ],
+  },
   js.configs.recommended,
   ...ts.configs.recommended,
   { files: ["scripts/**/*.mjs"], languageOptions: { globals: globals.node } },

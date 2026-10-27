@@ -8,6 +8,14 @@ create table public.user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
   payload jsonb not null check (jsonb_typeof(payload) = 'object')
 );
+create function public.create_profile() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  insert into public.profiles(id,name) values(new.id,left(coalesce(new.raw_user_meta_data->>'name',''),80));
+  return new;
+end $$;
+revoke all on function public.create_profile() from public, anon, authenticated;
+create trigger speedtrack_create_profile after insert on auth.users for each row execute function public.create_profile();
 create table public.sessions (
   id uuid primary key,
   user_id uuid not null references auth.users(id) on delete cascade,

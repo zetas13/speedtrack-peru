@@ -29,7 +29,10 @@ export function SpeedChart({ session }: { session: Session }) {
       >
         <ResponsiveContainer width="100%" height={185}>
           <AreaChart
-            data={session.measurements.map(m => ({...m, plotted: foot ? m.speed >= 1 ? 60/m.speed : null : m.speed}))}
+            data={session.measurements.map((m) => ({
+              ...m,
+              plotted: foot ? (m.speed >= 1 ? 60 / m.speed : null) : m.speed,
+            }))}
             margin={{ top: 12, right: 10, bottom: 5, left: -24 }}
           >
             <defs>

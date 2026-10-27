@@ -1,5 +1,5 @@
-import { Capacitor } from '@capacitor/core';
-import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from "@capacitor/core";
+import { Geolocation } from "@capacitor/geolocation";
 export interface GpsPoint {
   latitude: number;
   longitude: number;
@@ -18,16 +18,43 @@ export function watchGps(
       try {
         const permission = await Geolocation.requestPermissions();
         if (stopped) return;
-        if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') {onError();return;}
-        watchId = await Geolocation.watchPosition({enableHighAccuracy:true, timeout:12000, minimumUpdateInterval:1000}, (p, error) => {
-          if (stopped) return;
-          if (error || !p) {onError();return;}
-          onPoint({latitude:p.coords.latitude,longitude:p.coords.longitude,timestamp:p.timestamp,accuracy:p.coords.accuracy,speed:p.coords.speed});
-        });
-        if (stopped && watchId) await Geolocation.clearWatch({id:watchId});
-      } catch {if (!stopped) onError();}
+        if (
+          permission.location !== "granted" &&
+          permission.coarseLocation !== "granted"
+        ) {
+          onError();
+          return;
+        }
+        watchId = await Geolocation.watchPosition(
+          {
+            enableHighAccuracy: true,
+            timeout: 12000,
+            minimumUpdateInterval: 1000,
+          },
+          (p, error) => {
+            if (stopped) return;
+            if (error || !p) {
+              onError();
+              return;
+            }
+            onPoint({
+              latitude: p.coords.latitude,
+              longitude: p.coords.longitude,
+              timestamp: p.timestamp,
+              accuracy: p.coords.accuracy,
+              speed: p.coords.speed,
+            });
+          },
+        );
+        if (stopped && watchId) await Geolocation.clearWatch({ id: watchId });
+      } catch {
+        if (!stopped) onError();
+      }
     })();
-    return () => {stopped = true;if(watchId) void Geolocation.clearWatch({id:watchId}).catch(()=>{});};
+    return () => {
+      stopped = true;
+      if (watchId) void Geolocation.clearWatch({ id: watchId }).catch(() => {});
+    };
   }
   if (!navigator.geolocation || !window.isSecureContext) {
     onError();

@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ActivityType, Session, Settings, SpeedStatus, NavigationPlan } from "../types";
+import type {
+  ActivityType,
+  Session,
+  Settings,
+  SpeedStatus,
+  NavigationPlan,
+} from "../types";
 import { DEMO_SECONDS, demoMeasurement, newSession } from "../data/demo";
 import {
   addMeasurement,
@@ -9,11 +15,12 @@ import {
 import { watchGps } from "../services/gpsService";
 import { speak, stopSpeaking } from "../services/voiceService";
 import { translate } from "../i18n";
-import { GpsFilter } from '../utils/gpsFilter';
-import { draftService } from '../services/draftService';
+import { GpsFilter } from "../utils/gpsFilter";
+import { draftService } from "../services/draftService";
+import { routeProgress } from "../utils/navigation";
 export function useSession(
   settings: Settings,
-  onSave: (session: Session) => void,
+  onSave: (session: Session) => boolean,
   owner = "local-user",
 ) {
   const [session, setSession] = useState<Session | null>(null),
@@ -33,6 +40,7 @@ export function useSession(
     settingsRef = useRef(settings),
     saveRef = useRef(onSave),
     timeAlert = useRef(false);
+  const arrived = useRef(false);
   useEffect(() => {
     settingsRef.current = settings;
     saveRef.current = onSave;
@@ -53,9 +61,14 @@ export function useSession(
     stopGps.current();
     current.current = null;
     const result = { ...s, end_time: new Date().toISOString() };
-    saveRef.current(result);
-    draftService.clear(owner);
-    setDraft(null);
+    if (saveRef.current(result)) {
+      draftService.clear(owner);
+      setDraft(null);
+    } else {
+      draftService.write(result);
+      setDraft(result);
+      setDraftError(true);
+    }
     setCompleted(result);
     setSession(null);
     setPaused(false);
@@ -68,8 +81,29 @@ export function useSession(
       if (!prev) return;
       current.current = next;
       setSession(next);
-      if (Math.floor(next.duration) % 5 === 0) setDraftError(!draftService.write(next));
+      if (Math.floor(next.duration) % 5 === 0)
+        setDraftError(!draftService.write(next));
       const config = settingsRef.current;
+      const last = next.measurements.at(-1);
+      if (
+        !arrived.current &&
+        next.navigation?.route &&
+        last?.longitude != null &&
+        last.latitude != null
+      ) {
+        const progress = routeProgress(
+          [last.longitude, last.latitude],
+          next.navigation.route.coordinates,
+        );
+        if (
+          !progress.offRoute &&
+          progress.remaining < 0.05 &&
+          next.distance > 0.02
+        ) {
+          arrived.current = true;
+          announce("nearArrival");
+        }
+      }
       if (
         next.splits.length > prev.splits.length &&
         config.kilometer_alerts &&
@@ -122,8 +156,13 @@ export function useSession(
     [announce],
   );
   const start = useCallback(
-    (type: ActivityType, demo: boolean, goal: number | null, navigation?: NavigationPlan) => {
-      if (current.current) return;
+    (
+      type: ActivityType,
+      demo: boolean,
+      goal: number | null,
+      navigation?: NavigationPlan,
+    ) => {
+      if (current.current || draftService.read(owner)) return;
       stopGps.current();
       stopSpeaking();
       const s = newSession(type, demo, settingsRef.current.speed_limit, goal);
@@ -142,6 +181,7 @@ export function useSession(
       lastStatus.current = "normal";
       lastVoice.current = 0;
       timeAlert.current = false;
+      arrived.current = false;
       if (!demo)
         stopGps.current = watchGps(
           (point) => {
@@ -158,6 +198,8 @@ export function useSession(
                 latitude: point.latitude,
                 longitude: point.longitude,
                 accuracy: point.accuracy,
+                device_speed: point.speed,
+                break_before: accepted.breakBefore,
                 speed: accepted.speed,
                 acceleration: accepted.acceleration,
                 distance: live.distance + accepted.delta,
@@ -179,7 +221,7 @@ export function useSession(
       const live = current.current;
       if (!live || pausedRef.current) return;
       const now = performance.now();
-      const dt = Math.min(15, Math.max(0, (now-tickAt.current)/1000));
+      const dt = Math.max(0, (now - tickAt.current) / 1000);
       tickAt.current = now;
       clock.current += live.demo ? 1 : dt;
       if (live.demo) {
@@ -194,7 +236,8 @@ export function useSession(
         };
         current.current = next;
         setSession(next);
-        if (Math.floor(next.duration) % 5 === 0) setDraftError(!draftService.write(next));
+        if (Math.floor(next.duration) % 5 === 0)
+          setDraftError(!draftService.write(next));
       }
     }, 1000);
     return () => window.clearInterval(timer);
@@ -206,6 +249,18 @@ export function useSession(
     },
     [],
   );
+  useEffect(() => {
+    const hide = () => {
+      if (!document.hidden || !current.current) return;
+      pausedRef.current = true;
+      setPaused(true);
+      filter.current.reset();
+      setDraftError(!draftService.write(current.current));
+      stopSpeaking();
+    };
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, []);
   const togglePause = () => {
     const value = !pausedRef.current;
     pausedRef.current = value;
@@ -220,7 +275,22 @@ export function useSession(
     session,
     draftError,
     draft,
-    recoverDraft: () => {if(draft) {saveRef.current({...draft,end_time:new Date(draft.start_time).getTime() + draft.duration*1000 > Date.now() ? new Date().toISOString() : new Date(Date.parse(draft.start_time)+draft.duration*1000).toISOString()});draftService.clear(owner);setDraft(null);}},
+    recoverDraft: () => {
+      if (!draft) return;
+      const recovered = {
+        ...draft,
+        end_time:
+          draft.end_time ??
+          new Date(
+            Date.parse(draft.start_time) + draft.duration * 1000,
+          ).toISOString(),
+      };
+      if (saveRef.current(recovered)) {
+        draftService.clear(owner);
+        setDraft(null);
+        setDraftError(false);
+      }
+    },
     paused,
     gpsError,
     completed,
@@ -229,7 +299,14 @@ export function useSession(
     togglePause,
     updateNavigation: (navigation: NavigationPlan | undefined) => {
       if (!current.current) return;
-      const next = {...current.current,navigation};current.current=next;setSession(next);
+      if (
+        navigation?.destination.join(",") !==
+        current.current.navigation?.destination.join(",")
+      )
+        arrived.current = false;
+      const next = { ...current.current, navigation };
+      current.current = next;
+      setSession(next);
       setDraftError(!draftService.write(next));
     },
     clearCompleted: () => setCompleted(null),

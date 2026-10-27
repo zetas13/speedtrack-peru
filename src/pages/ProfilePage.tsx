@@ -163,7 +163,7 @@ export function ProfilePage({
           <GraduationCap size={28} />
           <p>{t("aboutText")}</p>
           <p className="muted">{t("disclaimer")}</p>
-          <span className="version">{t("app")} · v1.0</span>
+          <span className="version">{t("app")} · v2.0</span>
         </div>
       </Section>
     </>
