@@ -22,9 +22,9 @@ const read = (key: string): unknown => {
   }
 };
 export const storageService = {
-  loadSessions(): Session[] {
-    const data = read("speedtrack.sessions.v1");
-    if (!Array.isArray(data)) return seedSessions();
+  loadSessions(owner = "local-user"): Session[] {
+    const data = read(owner === "local-user" ? "speedtrack.sessions.v1" : `speedtrack.sessions.${owner}`);
+    if (!Array.isArray(data)) return owner === "local-user" ? seedSessions() : [];
     const valid = data.filter(
       (s): s is Session =>
         !!s &&
@@ -38,18 +38,18 @@ export const storageService = {
         Array.isArray(s.splits) &&
         Array.isArray(s.events),
     );
-    return valid;
+    return owner === "local-user" ? valid : valid.filter(s => s.user_id === owner);
   },
-  saveSessions(sessions: Session[]) {
+  saveSessions(sessions: Session[], owner = "local-user") {
     try {
-      localStorage.setItem("speedtrack.sessions.v1", JSON.stringify(sessions));
+      localStorage.setItem(owner === "local-user" ? "speedtrack.sessions.v1" : `speedtrack.sessions.${owner}`, JSON.stringify(sessions));
       return true;
     } catch {
       return false;
     }
   },
-  loadSettings(): Settings {
-    const raw = read("speedtrack.settings.v1");
+  loadSettings(owner = "local-user"): Settings {
+    const raw = read(owner === "local-user" ? "speedtrack.settings.v1" : `speedtrack.settings.${owner}`);
     if (!raw || typeof raw !== "object") return defaultSettings;
     const s = raw as Partial<Settings>;
     return {
@@ -90,9 +90,9 @@ export const storageService = {
           : 50,
     };
   },
-  saveSettings(settings: Settings) {
+  saveSettings(settings: Settings, owner = "local-user") {
     try {
-      localStorage.setItem("speedtrack.settings.v1", JSON.stringify(settings));
+      localStorage.setItem(owner === "local-user" ? "speedtrack.settings.v1" : `speedtrack.settings.${owner}`, JSON.stringify(settings));
       const user: User = {
         id: "local-user",
         name: "",
@@ -100,7 +100,7 @@ export const storageService = {
         language: settings.language,
         voice_enabled: settings.voice_enabled,
       };
-      localStorage.setItem("speedtrack.user.v1", JSON.stringify(user));
+      localStorage.setItem(`speedtrack.user.${owner}`, JSON.stringify(user));
       return true;
     } catch {
       return false;

@@ -10,7 +10,7 @@ import {
   Radio,
   Navigation,
 } from "lucide-react";
-import type { ActivityType, Session, Settings } from "../types";
+import type { ActivityType, Session, Settings, NavigationPlan } from "../types";
 import { useI18n } from "../i18n";
 import { PageHeading, Metric, Section, Toggle } from "../components/ui";
 import { SpeedChart } from "../components/SpeedChart";
@@ -30,7 +30,8 @@ interface Props {
   gpsError: boolean;
   settings: Settings;
   setLimit: (v: number) => void;
-  start: (type: ActivityType, demo: boolean, goal: number | null) => void;
+  start: (type: ActivityType, demo: boolean, goal: number | null, navigation?: NavigationPlan) => void;
+  updateNavigation: (plan: NavigationPlan | undefined) => void;
   finish: () => void;
   togglePause: () => void;
 }
@@ -42,17 +43,20 @@ export function TrackerPage({
   settings,
   setLimit,
   start,
+  updateNavigation,
   finish,
   togglePause,
 }: Props) {
   const { t, language } = useI18n();
   const [type, setType] = useState<ActivityType>("run"),
-    [demo, setDemo] = useState(true),
+    [demo, setDemo] = useState(false),
     [goal, setGoal] = useState("");
+  const [navigation, setNavigation] = useState<NavigationPlan>();
   const s =
     session && (session.type === "vehicle") === vehicle ? session : null;
   const current = s?.measurements.at(-1),
-    speed = current?.speed ?? 0,
+    stale = !s?.demo && !!current && (s?.duration ?? 0) - current.elapsed > 10,
+    speed = paused || stale ? 0 : current?.speed ?? 0,
     status = classifySpeedStatus(speed, s?.limit ?? settings.speed_limit);
   const cycling = (s?.type ?? type) === "bike";
   return (
@@ -144,7 +148,8 @@ export function TrackerPage({
                 start(
                   vehicle ? "vehicle" : type,
                   demo,
-                  goal && Number(goal) > 0 ? Number(goal) : null,
+                  goal && Number(goal) > 0 && Number(goal) <= 500 ? Number(goal) : null,
+                  navigation,
                 )
               }
               disabled={!!session}
@@ -154,6 +159,7 @@ export function TrackerPage({
             </button>
             {session && <p className="muted">{t("sessionActive")}</p>}
           </div>
+<Section title={t("destination")}><RouteMap measurements={[]} mode={vehicle ? "vehicle" : type} navigation={navigation} onNavigation={setNavigation}/></Section>
           <div className="preview-orbit">
             <Navigation size={32} />
             <span>
@@ -173,14 +179,16 @@ export function TrackerPage({
               {t(s.demo ? "simulatedTime" : "time")} {duration(s.duration)}
             </span>
           </div>
+          {stale && <p className="notice">{t("gpsLost")}</p>}
+          {current?.accuracy != null && <p className="muted">{t("accuracy")}: ? {Math.round(current.accuracy)} m</p>}
           {gpsError && (
             <div className="error-message" role="alert">
               <p>{t("locationUnavailable")}</p>
               <button
                 className="primary-button"
-                onClick={() => start(s.type, true, s.goal)}
+                onClick={finish}
               >
-                {t("useDemo")}
+                {t("finish")}
               </button>
             </div>
           )}
@@ -353,7 +361,7 @@ export function TrackerPage({
           )}
           <SpeedChart session={s} />
           <Section title={t("route")}>
-            <RouteMap measurements={s.measurements} />
+            <RouteMap measurements={s.measurements} mode={s.type} elapsed={s.duration} paused={paused} navigation={s.navigation} onNavigation={updateNavigation}/>
           </Section>
           <PhysicsPanel session={s} />
         </>

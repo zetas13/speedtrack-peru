@@ -12,6 +12,8 @@ import type { Session, Tab } from "../types";
 import { useI18n } from "../i18n";
 import { number } from "../utils/formatters";
 import { PageHeading, Section, SessionCard } from "../components/ui";
+import { Statistics } from '../components/Statistics';
+import { useAuth } from '../hooks/useAuth';
 export function HomePage({
   sessions,
   navigate,
@@ -22,6 +24,7 @@ export function HomePage({
   open: (s: Session) => void;
 }) {
   const { t, language } = useI18n();
+  const {user}=useAuth();
   const now = new Date(),
     start = new Date(now);
   start.setDate(now.getDate() - ((now.getDay() + 6) % 7));
@@ -29,7 +32,7 @@ export function HomePage({
   const weekly = sessions
     .filter(
       (s) =>
-        s.type !== "vehicle" &&
+        !s.demo && s.type !== "vehicle" &&
         new Date(s.start_time) >= start &&
         new Date(s.start_time) <= now,
     )
@@ -47,7 +50,7 @@ export function HomePage({
           <Radio size={14} />
         </span>
       </div>
-      <PageHeading eyebrow={t("greeting")} title={t("welcome")}>
+      <PageHeading eyebrow={user ? t("greetUser",{name:user.user_metadata.name || t("member")}) : t("greeting")} title={t("welcome")}>
         <p>{t("tagline")}</p>
       </PageHeading>
       <div className="hero-card">
@@ -149,6 +152,7 @@ export function HomePage({
           />
         )}
       </Section>
+      <Statistics sessions={sessions}/>
       <p className="footnote">{t("academic")}</p>
     </>
   );

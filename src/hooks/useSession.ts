@@ -1,29 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ActivityType, Session, Settings, SpeedStatus } from "../types";
+import type { ActivityType, Session, Settings, SpeedStatus, NavigationPlan } from "../types";
 import { DEMO_SECONDS, demoMeasurement, newSession } from "../data/demo";
 import {
   addMeasurement,
-  calculateAcceleration,
   calculateAveragePace,
-  calculateDistance,
   classifySpeedStatus,
 } from "../utils/physics";
-import { watchGps, type GpsPoint } from "../services/gpsService";
+import { watchGps } from "../services/gpsService";
 import { speak, stopSpeaking } from "../services/voiceService";
 import { translate } from "../i18n";
+import { GpsFilter } from '../utils/gpsFilter';
+import { draftService } from '../services/draftService';
 export function useSession(
   settings: Settings,
   onSave: (session: Session) => void,
+  owner = "local-user",
 ) {
   const [session, setSession] = useState<Session | null>(null),
     [paused, setPaused] = useState(false),
     [gpsError, setGpsError] = useState(false),
     [completed, setCompleted] = useState<Session | null>(null);
+  const [draftError, setDraftError] = useState(false);
+  const [draft, setDraft] = useState(() => draftService.read(owner));
   const current = useRef<Session | null>(null),
     pausedRef = useRef(false),
     stopGps = useRef<() => void>(() => {}),
     clock = useRef(0),
-    lastPoint = useRef<GpsPoint | null>(null),
+    filter = useRef(new GpsFilter()),
+    tickAt = useRef(0),
     lastStatus = useRef<SpeedStatus>("normal"),
     lastVoice = useRef(0),
     settingsRef = useRef(settings),
@@ -50,18 +54,21 @@ export function useSession(
     current.current = null;
     const result = { ...s, end_time: new Date().toISOString() };
     saveRef.current(result);
+    draftService.clear(owner);
+    setDraft(null);
     setCompleted(result);
     setSession(null);
     setPaused(false);
     stopSpeaking();
     announce(s.type === "vehicle" ? "vehicleFinishVoice" : "finishVoice");
-  }, [announce]);
+  }, [announce, owner]);
   const commit = useCallback(
     (next: Session) => {
       const prev = current.current;
       if (!prev) return;
       current.current = next;
       setSession(next);
+      if (Math.floor(next.duration) % 5 === 0) setDraftError(!draftService.write(next));
       const config = settingsRef.current;
       if (
         next.splits.length > prev.splits.length &&
@@ -115,18 +122,23 @@ export function useSession(
     [announce],
   );
   const start = useCallback(
-    (type: ActivityType, demo: boolean, goal: number | null) => {
+    (type: ActivityType, demo: boolean, goal: number | null, navigation?: NavigationPlan) => {
+      if (current.current) return;
       stopGps.current();
       stopSpeaking();
       const s = newSession(type, demo, settingsRef.current.speed_limit, goal);
+      s.user_id = owner;
+      s.navigation = navigation;
       current.current = s;
+      setDraftError(!draftService.write(s));
       setSession(s);
       setPaused(false);
       pausedRef.current = false;
       setGpsError(false);
       setCompleted(null);
       clock.current = 0;
-      lastPoint.current = null;
+      tickAt.current = performance.now();
+      filter.current.reset();
       lastStatus.current = "normal";
       lastVoice.current = 0;
       timeAlert.current = false;
@@ -135,24 +147,8 @@ export function useSession(
           (point) => {
             const live = current.current;
             if (!live || pausedRef.current) return;
-            const previous = lastPoint.current;
-            if (previous && point.timestamp <= previous.timestamp) return;
-            lastPoint.current = point;
-            const prior = live.measurements.at(-1);
-            const dt = prior ? clock.current - prior.elapsed : 0; // First fix after pause establishes a new position baseline.
-            const delta = previous ? calculateDistance(previous, point) : 0;
-            const plausible = previous && dt > 0 && (delta / dt) * 3600 < 250;
-            const acceptedDelta =
-              plausible &&
-              delta * 1000 > Math.max(point.accuracy, previous.accuracy) * 0.3
-                ? delta
-                : 0;
-            const speed =
-              point.speed !== null && point.speed >= 0
-                ? point.speed * 3.6
-                : dt > 0
-                  ? (acceptedDelta / dt) * 3600
-                  : 0;
+            const accepted = filter.current.accept(point, live.type);
+            if (!accepted) return;
             commit(
               addMeasurement(live, {
                 id: crypto.randomUUID(),
@@ -162,13 +158,9 @@ export function useSession(
                 latitude: point.latitude,
                 longitude: point.longitude,
                 accuracy: point.accuracy,
-                speed,
-                acceleration: calculateAcceleration(
-                  prior?.speed ?? speed,
-                  speed,
-                  dt,
-                ),
-                distance: live.distance + acceptedDelta,
+                speed: accepted.speed,
+                acceleration: accepted.acceleration,
+                distance: live.distance + accepted.delta,
               }),
             );
             setGpsError(false);
@@ -178,7 +170,7 @@ export function useSession(
           },
         );
     },
-    [commit],
+    [commit, owner],
   );
   const sessionId = session?.id;
   useEffect(() => {
@@ -186,7 +178,10 @@ export function useSession(
     const timer = window.setInterval(() => {
       const live = current.current;
       if (!live || pausedRef.current) return;
-      clock.current += 1;
+      const now = performance.now();
+      const dt = Math.min(15, Math.max(0, (now-tickAt.current)/1000));
+      tickAt.current = now;
+      clock.current += live.demo ? 1 : dt;
       if (live.demo) {
         commit(addMeasurement(live, demoMeasurement(live, clock.current)));
         if (clock.current >= DEMO_SECONDS) finish();
@@ -199,6 +194,7 @@ export function useSession(
         };
         current.current = next;
         setSession(next);
+        if (Math.floor(next.duration) % 5 === 0) setDraftError(!draftService.write(next));
       }
     }, 1000);
     return () => window.clearInterval(timer);
@@ -214,18 +210,28 @@ export function useSession(
     const value = !pausedRef.current;
     pausedRef.current = value;
     setPaused(value);
-    lastPoint.current = null;
+    tickAt.current = performance.now();
+    if (current.current) setDraftError(!draftService.write(current.current));
+    filter.current.reset();
     stopSpeaking();
     announce(value ? "pauseVoice" : "resumeVoice");
   };
   return {
     session,
+    draftError,
+    draft,
+    recoverDraft: () => {if(draft) {saveRef.current({...draft,end_time:new Date(draft.start_time).getTime() + draft.duration*1000 > Date.now() ? new Date().toISOString() : new Date(Date.parse(draft.start_time)+draft.duration*1000).toISOString()});draftService.clear(owner);setDraft(null);}},
     paused,
     gpsError,
     completed,
     start,
     finish,
     togglePause,
+    updateNavigation: (navigation: NavigationPlan | undefined) => {
+      if (!current.current) return;
+      const next = {...current.current,navigation};current.current=next;setSession(next);
+      setDraftError(!draftService.write(next));
+    },
     clearCompleted: () => setCompleted(null),
   };
 }

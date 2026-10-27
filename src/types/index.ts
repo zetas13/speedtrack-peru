@@ -30,6 +30,7 @@ export interface Split {
   pace: number;
 }
 export interface Session {
+  navigation?: NavigationPlan;
   id: string;
   user_id: string;
   type: ActivityType;
@@ -48,6 +49,17 @@ export interface Session {
   limit: number;
   above_limit: number;
   goal: number | null;
+}
+export type Coordinate = [number, number];
+export interface RoutePlan {
+  coordinates: Coordinate[];
+  distance: number;
+  duration: number;
+  profile: string;
+}
+export interface NavigationPlan {
+  destination: Coordinate;
+  route?: RoutePlan;
 }
 export interface Settings {
   id: string;

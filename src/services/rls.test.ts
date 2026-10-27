@@ -1,0 +1,36 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'node:fs';
+import { expect,it } from 'vitest';
+import { generateDemo } from '../data/demo';
+it('executes the migration and isolates all tables and atomic RPC across two users',async()=>{
+  const db=new PGlite();
+  try {
+    await db.exec(`create role anon; create role authenticated; create schema auth;
+      create table auth.users(id uuid primary key);
+      create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+      grant usage on schema public,auth to authenticated,anon;
+      grant execute on function auth.uid() to authenticated,anon;`);
+    await db.exec(readFileSync(new URL('../../supabase/migrations/202610270001_speedtrack_v2.sql',import.meta.url),'utf8'));
+    const alice='11111111-1111-4111-8111-111111111111',bob='22222222-2222-4222-8222-222222222222';
+    await db.query('insert into auth.users values ($1),($2)',[alice,bob]);
+    await db.exec(`set role authenticated; set request.jwt.claim.sub='${alice}';`);
+    const a={...generateDemo('vehicle'),user_id:alice};
+    await db.query('select public.save_activity($1::jsonb)',[JSON.stringify(a)]);
+    await db.query('insert into public.profiles values ($1,$2)',[alice,'Alice']);
+    await db.query('insert into public.user_settings values ($1,$2)',[alice,'{}']);
+    await db.exec(`set request.jwt.claim.sub='${bob}'`);
+    for(const table of ['profiles','sessions','measurements','splits','events','user_settings']) {
+      expect((await db.query(`select * from public.${table}`)).rows).toHaveLength(0);
+    }
+    await expect(db.query('select public.save_activity($1::jsonb)',[JSON.stringify(a)])).rejects.toThrow();
+    await expect(db.query('select public.save_activity($1::jsonb)',[JSON.stringify({...a,user_id:bob})])).rejects.toThrow();
+    await expect(db.query('insert into public.measurements values ($1,$2,$3,$4)',['attack',a.id,bob,'{}'])).rejects.toThrow();
+    await expect(db.query('insert into public.profiles values ($1,$2)',[alice,'attack'])).rejects.toThrow();
+    await db.exec(`delete from public.sessions; set request.jwt.claim.sub='${alice}';`);
+    expect((await db.query('select * from public.sessions')).rows).toHaveLength(1);
+    await db.query('select public.save_activity($1::jsonb)',[JSON.stringify(a)]);
+    expect((await db.query('select * from public.measurements')).rows).toHaveLength(a.measurements.length);
+    await db.exec('reset role; set role anon;');
+    await expect(db.query('select * from public.sessions')).rejects.toThrow();
+  } finally {await db.close();}
+},30000);

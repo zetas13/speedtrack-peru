@@ -5,7 +5,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: { charts: ["recharts"] },
+        manualChunks: (id) => id.includes("recharts") ? "charts" : undefined,
       },
     },
   },

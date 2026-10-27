@@ -1,4 +1,24 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+.map-canvas { height: 330px; width: 100%; border-radius: 16px; overflow: hidden; background: #223025; }
+.navigation-panel { margin: 16px 0; }
+.navigation-panel > button { margin-top: 10px; }
+.maplibregl-ctrl-attrib { color: #222; }
+.maplibregl-ctrl-attrib a { color: #222; }
+.account-panel { margin-bottom: 24px; }
+.account-panel h2 { font-size: 20px; }
+.account-panel label, .map-search label { display: block; font-size: 12px; margin: 14px 0; }
+.account-panel input, .map-search input { display: block; width: 100%; margin-top: 8px; padding: 13px; background: #111a13; border: 1px solid #45523c; color: #edf2e9; border-radius: 10px; }
+.account-actions { display: flex; flex-wrap: wrap; gap: 14px; margin: 15px 0; }
+.sync-status { color: #b8d990; font-size: 11px; margin: 0 0 18px; padding: 8px 0; }
+.search-result { display:block; text-align:left; padding:12px; width:100%; border-bottom:1px solid #45523c; }
+.weekly-bars { display:flex; gap:10px; padding:18px 12px; margin-top:12px; }
+.weekly-bars > div { flex:1; text-align:center; font-size:10px; color:var(--muted); }
+.bar-space { height:85px; display:flex; align-items:flex-end; margin:10px 0; }
+.bar-space i { width:100%; min-height:2px; background:var(--lime); border-radius:5px; }
+.activity-counts { display:flex; flex-wrap:wrap; gap:12px; font-size:11px; margin-top:14px; color:var(--muted); }
+.metric strong { overflow-wrap: anywhere; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+:focus-visible { outline: 2px solid #c3f65b; outline-offset: 3px; }
 :root {
   font-family: "DM Sans", system-ui, sans-serif;
   color: #edf2e9;
