@@ -294,6 +294,9 @@ export const qu: Record<TranslationKey, string> = {
   endDemo: "Qhawarichiy tukukuptin kikillanmanta waqaychakun.",
   sessionActive: "Huk puriy qallarisqa kachkan. Ura siq’imanta kutiy.",
   gpsWaiting: "GPS señal nisqata maskachkan…",
+  gpsReady: "GPS listoña",
+  emptyActivity:
+    "Mana allin kuyuyta qillqasqachu. Puriy mana waqaychasqachu. Chiqap taripay permisota qhaway, GPS listo kanan kama suyay manaraq purispa.",
   seed: "Ñawpaq churasqa qhawarichiy",
   simulatedTime: "Yachapayasqa pacha",
   best: "Ñawpaqman puriyniyki kaypi qallarin",

@@ -10,6 +10,7 @@ export interface GpsPoint {
 export function watchGps(
   onPoint: (point: GpsPoint) => void,
   onError: () => void,
+  onPermissionReady: () => void = () => {},
 ): () => void {
   if (Capacitor.isNativePlatform()) {
     let stopped = false;
@@ -18,6 +19,7 @@ export function watchGps(
       try {
         const permission = await Geolocation.requestPermissions();
         if (stopped) return;
+        onPermissionReady();
         if (
           permission.location !== "granted" &&
           permission.coarseLocation !== "granted"
@@ -67,6 +69,7 @@ export function watchGps(
   const id = navigator.geolocation.watchPosition(
     (p) => {
       if (stopped) return;
+      onPermissionReady();
       onPoint({
         latitude: p.coords.latitude,
         longitude: p.coords.longitude,
@@ -76,7 +79,10 @@ export function watchGps(
       });
     },
     () => {
-      if (!stopped) onError();
+      if (!stopped) {
+        onPermissionReady();
+        onError();
+      }
     },
     { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
   );

@@ -308,6 +308,9 @@ export const en: Record<keyof typeof es, string> = {
   sessionActive:
     "A journey is active. Return to it using the bottom navigation.",
   gpsWaiting: "Searching for a GPS signal…",
+  gpsReady: "GPS ready",
+  emptyActivity:
+    "No valid movement was recorded. The activity was not saved. Check precise location permission and wait for GPS to be ready before moving.",
   seed: "Preloaded example",
   simulatedTime: "Simulated time",
   best: "Your progress starts here",

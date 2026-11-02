@@ -61,3 +61,29 @@ it("denied native permissions report failure without crashing", async () => {
   expect(error).toHaveBeenCalledOnce();
   expect(api.watchPosition).not.toHaveBeenCalled();
 });
+it("permission readiness precedes tracking and a transient error does not stop subsequent fixes", async () => {
+  const point = vi.fn(),
+    error = vi.fn(),
+    ready = vi.fn();
+  const stop = watchGps(point, error, ready);
+  expect(ready).not.toHaveBeenCalled();
+  await flush();
+  expect(ready).toHaveBeenCalledOnce();
+  const callback = api.watchPosition.mock.calls[0][1];
+  callback(null, { code: "timeout" });
+  callback({
+    timestamp: 1000,
+    coords: { latitude: 0, longitude: 0, accuracy: 5, speed: null },
+  });
+  expect(error).toHaveBeenCalledOnce();
+  expect(point).toHaveBeenCalledWith({
+    timestamp: 1000,
+    latitude: 0,
+    longitude: 0,
+    accuracy: 5,
+    speed: null,
+  });
+  stop();
+  callback({ timestamp: 2000, coords: {} });
+  expect(point).toHaveBeenCalledOnce();
+});

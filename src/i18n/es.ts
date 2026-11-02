@@ -309,6 +309,9 @@ export const es = {
   sessionActive:
     "Hay un recorrido activo. Puedes volver desde la barra inferior.",
   gpsWaiting: "Buscando señal GPS…",
+  gpsReady: "GPS listo",
+  emptyActivity:
+    "No se registró movimiento válido. La actividad no se guardó. Revisa el permiso de ubicación precisa y espera a que el GPS esté listo antes de moverte.",
   seed: "Ejemplo precargado",
   simulatedTime: "Tiempo simulado",
   best: "Tu progreso empieza aquí",

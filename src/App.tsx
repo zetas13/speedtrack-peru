@@ -110,6 +110,11 @@ function Workspace({ owner }: { owner: string }) {
             </div>
           )}
           {settingsPending && <p className="muted">{t("settingsPending")}</p>}
+          {tracker.emptyActivity && (
+            <p className="notice" role="status">
+              {t("emptyActivity")}
+            </p>
+          )}
           {tracker.draft && !tracker.session && (
             <button
               className="secondary-button full"

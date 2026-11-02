@@ -217,11 +217,22 @@ export function TrackerPage({
               <p>{t("locationUnavailable")}</p>
             </div>
           )}
-          {!s.demo && !s.measurements.length && !gpsError && (
+          {!s.demo && waitingFix && !gpsError && !paused && (
             <p className="notice" role="status">
               {t("gpsWaiting")}
             </p>
           )}
+          {!s.demo &&
+            !waitingFix &&
+            !paused &&
+            !stale &&
+            !gpsError &&
+            gpsAccuracy != null &&
+            gpsAccuracy <= gpsPolicy.maxAccuracyM && (
+              <p className="notice" role="status">
+                {t("gpsReady")}
+              </p>
+            )}
           <div className="activity-map">
             {!vehicle && (
               <div className="live-summary sport-summary card">

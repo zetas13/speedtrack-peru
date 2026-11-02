@@ -1,5 +1,7 @@
 # Precisión, navegación, voz e idiomas — 2026-11-01
 
+**Actualización:** [QA final del 2026-11-02](final-qa.md) reemplaza los umbrales GPS, la interpretación de velocidad cero y los resultados de verificación de esta revisión histórica.
+
 Esta ronda reutiliza `gpsService`, `GpsFilter`, `routingService`, `WorldMap`, `useSession` y los diccionarios existentes. No cambia de proveedor ni incorpora reconocimiento de comandos: el proyecto solo tenía una tarjeta de función futura, no una implementación de reconocimiento.
 
 ## GPS y física

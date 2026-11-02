@@ -30,6 +30,18 @@ export function useSession(
     [gpsError, setGpsError] = useState(false),
     [completed, setCompleted] = useState<Session | null>(null);
   const [waitingFix, setWaitingFix] = useState(false);
+  const [emptyActivity, setEmptyActivity] = useState(false);
+  const permissionPending = useRef(false);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const target = window as unknown as {
+      speedtrackGpsDiagnostics?: () => unknown;
+    };
+    target.speedtrackGpsDiagnostics = () => ({ ...filter.current.diagnostics });
+    return () => {
+      delete target.speedtrackGpsDiagnostics;
+    };
+  }, []);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const lastGpsWarning = useRef(-Infinity);
   const lastProgress = useRef(0);
@@ -73,6 +85,15 @@ export function useSession(
     if (!s) return;
     stopGps.current();
     current.current = null;
+    if (!s.demo && s.distance <= 0) {
+      draftService.clear(owner);
+      setDraft(null);
+      setSession(null);
+      setPaused(false);
+      setEmptyActivity(true);
+      stopSpeaking();
+      return;
+    }
     const result = { ...s, end_time: new Date().toISOString() };
     if (saveRef.current(result)) {
       draftService.clear(owner);
@@ -94,8 +115,8 @@ export function useSession(
       if (!prev) return;
       current.current = next;
       setSession(next);
-      if (Math.floor(next.duration) % 5 === 0)
-        setDraftError(!draftService.write(next));
+      // Persist each accepted observation, including the first movement.
+      setDraftError(!draftService.write(next));
       const config = settingsRef.current;
       const last = next.measurements.at(-1);
       if (
@@ -231,9 +252,10 @@ export function useSession(
       pausedRef.current = false;
       setGpsError(false);
       setCompleted(null);
+      setEmptyActivity(false);
       clock.current = 0;
       tickAt.current = performance.now();
-      filter.current.reset();
+      filter.current = new GpsFilter();
       lastStatus.current = "normal";
       lastVoice.current = 0;
       timeAlert.current = false;
@@ -242,6 +264,7 @@ export function useSession(
       lastGpsWarning.current = -Infinity;
       setGpsAccuracy(null);
       setWaitingFix(!demo);
+      permissionPending.current = !demo;
       announce("startVoice");
       if (!demo)
         stopGps.current = watchGps(
@@ -256,7 +279,11 @@ export function useSession(
               lastGpsWarning.current = clock.current;
               announce("lowAccuracyVoice");
             }
-            const accepted = filter.current.accept(point, live.type);
+            const accepted = filter.current.accept(
+              point,
+              live.type,
+              Date.now(),
+            );
             if (!accepted) return;
             setWaitingFix(false);
             commit(
@@ -280,6 +307,9 @@ export function useSession(
           },
           () => {
             setGpsError(true);
+          },
+          () => {
+            permissionPending.current = false;
           },
         );
     },
@@ -322,7 +352,8 @@ export function useSession(
   );
   useEffect(() => {
     const hide = () => {
-      if (!document.hidden || !current.current) return;
+      if (!document.hidden || !current.current || permissionPending.current)
+        return;
       pausedRef.current = true;
       setPaused(true);
       filter.current.reset();
@@ -348,8 +379,15 @@ export function useSession(
     session,
     draftError,
     draft,
+    emptyActivity,
     recoverDraft: () => {
       if (!draft) return;
+      if (!draft.demo && draft.distance <= 0) {
+        draftService.clear(owner);
+        setDraft(null);
+        setEmptyActivity(true);
+        return;
+      }
       const recovered = {
         ...draft,
         end_time:

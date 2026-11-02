@@ -13,6 +13,67 @@ const p = (
   accuracy,
 });
 describe("precision regression", () => {
+  it("does not initialize from an expired or future fix", () => {
+    const f = new GpsFilter();
+    expect(f.accept(p(0, 0), "walk", 20000)).toBeNull();
+    expect(f.accept(p(30, 0), "walk", 20000)).toBeNull();
+    expect(f.accept(p(20, 0), "walk", 20000)?.breakBefore).toBe(true);
+  });
+  for (const [mode, metersPerSecond] of [
+    ["walk", 0.6],
+    ["walk", 1.4],
+    ["run", 3],
+    ["bike", 6],
+    ["vehicle", 10],
+  ] as const) {
+    for (const deviceSpeed of [null, 0]) {
+      it(`records ${mode} at ${metersPerSecond} m/s with device speed ${deviceSpeed}`, () => {
+        const f = new GpsFilter();
+        f.accept(p(0, 0, deviceSpeed, 20), mode);
+        let distance = 0;
+        for (let i = 1; i <= 60; i++)
+          distance +=
+            f.accept(p(i, i * metersPerSecond, deviceSpeed, 20), mode)?.delta ??
+            0;
+        expect(distance * 1000).toBeGreaterThan(60 * metersPerSecond * 0.85);
+        expect(distance * 1000).toBeLessThanOrEqual(
+          60 * metersPerSecond * 1.01,
+        );
+        expect(f.diagnostics.discarded).toBe(0);
+      });
+    }
+  }
+  it("keeps a stationary phone still in every mode despite coordinate noise", () => {
+    for (const mode of ["walk", "run", "bike", "vehicle"] as const) {
+      const f = new GpsFilter();
+      f.accept(p(0, 0), mode);
+      let distance = 0;
+      for (let i = 1; i <= 120; i++)
+        distance += f.accept(p(i, Math.sin(i) * 1.5), mode)?.delta ?? 0;
+      expect(distance).toBe(0);
+    }
+  });
+  it("preserves movement through poor accuracy and reacquires after a long outage", () => {
+    const f = new GpsFilter();
+    f.accept(p(0, 0), "walk");
+    expect(f.accept(p(3, 3), "walk")?.delta).toBeCloseTo(0.003);
+    expect(f.accept(p(4, 100, null, 100), "walk")).toBeNull();
+    expect(f.diagnostics.reason).toBe("invalid_or_inaccurate_fix");
+    expect(f.accept(p(6, 6), "walk")?.delta).toBeCloseTo(0.003);
+    expect(f.accept(p(30, 50), "walk")).toMatchObject({
+      delta: 0,
+      breakBefore: true,
+    });
+    expect(f.accept(p(33, 53), "walk")?.delta).toBeCloseTo(0.003);
+    expect(f.accept(p(32, 52), "walk")).toBeNull();
+    expect(f.diagnostics).toMatchObject({
+      received: 7,
+      accepted: 5,
+      discarded: 2,
+      reason: "non_monotonic_timestamp",
+    });
+    expect(f.diagnostics).not.toHaveProperty("latitude");
+  });
   it("never sums coordinate noise, even with false device movement", () => {
     const f = new GpsFilter();
     f.accept(p(0, 0), "run");

@@ -220,7 +220,7 @@ test("Auth reports specific safe errors and expired email links", async ({ page 
     ["invalid_credentials", "El correo o la contraseña no coinciden"],
     ["unexpected_failure", "No se pudo completar la operación"],
   ]) {
-    await page.route("**/auth/v1/token**", (r) => r.fulfill({ status: 400, headers: { "x-supabase-api-version": "2024-01-01" }, json: { code, msg: "private-provider-detail" } }));
+    await page.route("**/auth/v1/token**", (r) => r.fulfill({ status: 400, headers: { "x-supabase-api-version": "2024-01-01", "access-control-expose-headers": "X-Supabase-Api-Version" }, json: { code, msg: "private-provider-detail" } }));
     await page.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
     await expect(page.getByRole("status")).toContainText(message);
     await expect(page.getByRole("status")).toContainText(code);
@@ -306,6 +306,59 @@ test("GPS captures real samples and recovers an interrupted draft", async ({
     page.getByText("GPS real", { exact: false }).first(),
   ).toBeVisible();
 });
+test("GPS permission interruption, first movement persistence and empty activity feedback", async ({ page }) => {
+  await mocks(page);
+  await page.addInitScript(() => {
+    let callback: PositionCallback;
+    Object.defineProperty(navigator, "geolocation", { value: {
+      watchPosition: (cb: PositionCallback) => { callback = cb; return 1; },
+      clearWatch: () => {},
+    } });
+    Object.assign(window, { emitGps: (meters: number, accuracy: number) => callback({
+      timestamp: Date.now(), coords: { latitude: 0, longitude: meters / 111194.9266,
+        accuracy, speed: 0, altitude: null, altitudeAccuracy: null, heading: null },
+    } as GeolocationPosition) });
+  });
+  await page.clock.install();
+  await page.goto("/");
+  await tab(page, "Actividad");
+  await page.getByRole("button", { name: "Caminar", exact: true }).click();
+  const start = () => page.getByRole("button", { name: "Iniciar actividad", exact: true }).click();
+  const emit = (meters: number, accuracy = 5) => page.evaluate(({ meters, accuracy }) => {
+    (window as unknown as { emitGps: (m: number, a: number) => void }).emitGps(meters, accuracy);
+  }, { meters, accuracy });
+  await start();
+  await expect(page.getByText("Buscando señal GPS…")).toBeVisible();
+  // A permission dialog can hide the document before the watcher is ready.
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(page.getByRole("button", { name: "Pausar", exact: true })).toBeVisible();
+  await emit(0, 100);
+  await expect(page.getByText("GPS listo", { exact: true })).toHaveCount(0);
+  await emit(0);
+  await expect(page.getByText("GPS listo", { exact: true })).toBeVisible();
+  await page.clock.runFor(3000);
+  await emit(4);
+  const draft = await page.evaluate(() => JSON.parse(localStorage.getItem("speedtrack.draft.local-user")!));
+  expect(draft.distance).toBeGreaterThan(0.0039);
+  expect(draft.measurements).toHaveLength(2);
+  await page.getByRole("button", { name: "Finalizar", exact: true }).click();
+  await page.reload();
+  await tab(page, "Historial");
+  await expect(page.locator(".session-card")).toHaveCount(4);
+  await tab(page, "Actividad");
+  await start();
+  await emit(0);
+  await page.getByRole("button", { name: "Finalizar", exact: true }).click();
+  await expect(page.getByText(/No se registró movimiento válido/)).toBeVisible();
+  await tab(page, "Historial");
+  await expect(page.locator(".session-card")).toHaveCount(4);
+});
+
 test("account switch never displays another account history and import is explicit", async ({
   page,
 }) => {
