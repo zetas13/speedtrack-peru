@@ -6,7 +6,7 @@ import type {
   SpeedStatus,
   NavigationPlan,
 } from "../types";
-import { DEMO_SECONDS, demoMeasurement, newSession } from "../data/demo";
+import { newSession } from "../utils/session";
 import {
   addMeasurement,
   calculateAveragePace,
@@ -15,6 +15,7 @@ import {
 } from "../utils/physics";
 import { navigationForMode } from "../services/routingService";
 import { watchGps } from "../services/gpsService";
+import { useMotion } from "./useMotion";
 import { announceVoice, stopSpeaking } from "../services/voiceService";
 import { translate } from "../i18n";
 import { gpsPolicy, GpsFilter } from "../utils/gpsFilter";
@@ -31,6 +32,11 @@ export function useSession(
     [completed, setCompleted] = useState<Session | null>(null);
   const [waitingFix, setWaitingFix] = useState(false);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const motion = useMotion(!!session && !paused, session?.id);
+  const motionRef = useRef(motion);
+  useEffect(() => {
+    motionRef.current = motion;
+  }, [motion]);
   const lastGpsWarning = useRef(-Infinity);
   const lastProgress = useRef(0);
   const [draftError, setDraftError] = useState(false);
@@ -73,7 +79,13 @@ export function useSession(
     if (!s) return;
     stopGps.current();
     current.current = null;
-    const result = { ...s, end_time: new Date().toISOString() };
+    const onFoot = s.type === "walk" || s.type === "run";
+    const counted = motionRef.current;
+    const result = {
+      ...s,
+      end_time: new Date().toISOString(),
+      ...(onFoot && counted.supported ? { steps: counted.steps } : {}),
+    };
     if (saveRef.current(result)) {
       draftService.clear(owner);
       setDraft(null);
@@ -212,16 +224,11 @@ export function useSession(
     [announce],
   );
   const start = useCallback(
-    (
-      type: ActivityType,
-      demo: boolean,
-      goal: number | null,
-      navigation?: NavigationPlan,
-    ) => {
+    (type: ActivityType, goal: number | null, navigation?: NavigationPlan) => {
       if (current.current || draftService.read(owner)) return;
       stopGps.current();
       stopSpeaking();
-      const s = newSession(type, demo, settingsRef.current.speed_limit, goal);
+      const s = newSession(type, settingsRef.current.speed_limit, goal);
       s.user_id = owner;
       s.navigation = navigationForMode(navigation, type);
       current.current = s;
@@ -241,47 +248,51 @@ export function useSession(
       lastProgress.current = 0;
       lastGpsWarning.current = -Infinity;
       setGpsAccuracy(null);
-      setWaitingFix(!demo);
+      setWaitingFix(true);
       announce("startVoice");
-      if (!demo)
-        stopGps.current = watchGps(
-          (point) => {
-            const live = current.current;
-            if (!live || pausedRef.current) return;
-            setGpsAccuracy(point.accuracy);
-            if (
-              point.accuracy > gpsPolicy.maxAccuracyM &&
-              clock.current - lastGpsWarning.current >= 60
-            ) {
-              lastGpsWarning.current = clock.current;
-              announce("lowAccuracyVoice");
-            }
-            const accepted = filter.current.accept(point, live.type);
-            if (!accepted) return;
-            setWaitingFix(false);
-            commit(
-              addMeasurement(live, {
-                id: crypto.randomUUID(),
-                session_id: live.id,
-                timestamp: point.timestamp,
-                elapsed: clock.current,
-                latitude: point.latitude,
-                longitude: point.longitude,
-                accuracy: point.accuracy,
-                device_speed: point.speed,
-                break_before: accepted.breakBefore,
-                speed: accepted.speed,
-                instantaneous_speed: accepted.instantaneousSpeed,
-                acceleration: accepted.acceleration,
-                distance: live.distance + accepted.delta,
-              }),
-            );
-            setGpsError(false);
-          },
-          () => {
-            setGpsError(true);
-          },
-        );
+      stopGps.current = watchGps(
+        (point) => {
+          const live = current.current;
+          if (!live || pausedRef.current) return;
+          setGpsAccuracy(point.accuracy);
+          if (
+            point.accuracy > gpsPolicy.maxAccuracyM &&
+            clock.current - lastGpsWarning.current >= 60
+          ) {
+            lastGpsWarning.current = clock.current;
+            announce("lowAccuracyVoice");
+          }
+          const m = motionRef.current;
+          const accepted = filter.current.accept(
+            point,
+            live.type,
+            m.supported ? !m.moving : undefined,
+          );
+          if (!accepted) return;
+          setWaitingFix(false);
+          commit(
+            addMeasurement(live, {
+              id: crypto.randomUUID(),
+              session_id: live.id,
+              timestamp: point.timestamp,
+              elapsed: clock.current,
+              latitude: point.latitude,
+              longitude: point.longitude,
+              accuracy: point.accuracy,
+              device_speed: point.speed,
+              break_before: accepted.breakBefore,
+              speed: accepted.speed,
+              instantaneous_speed: accepted.instantaneousSpeed,
+              acceleration: accepted.acceleration,
+              distance: live.distance + accepted.delta,
+            }),
+          );
+          setGpsError(false);
+        },
+        () => {
+          setGpsError(true);
+        },
+      );
     },
     [commit, owner, announce],
   );
@@ -294,25 +305,20 @@ export function useSession(
       const now = performance.now();
       const dt = Math.max(0, (now - tickAt.current) / 1000);
       tickAt.current = now;
-      clock.current += live.demo ? 1 : dt;
-      if (live.demo) {
-        commit(addMeasurement(live, demoMeasurement(live, clock.current)));
-        if (clock.current >= DEMO_SECONDS) finish();
-      } else {
-        const next = {
-          ...live,
-          duration: clock.current,
-          avg_speed:
-            clock.current > 0 ? (live.distance / clock.current) * 3600 : 0,
-        };
-        current.current = next;
-        setSession(next);
-        if (Math.floor(next.duration) % 5 === 0)
-          setDraftError(!draftService.write(next));
-      }
+      clock.current += dt;
+      const next = {
+        ...live,
+        duration: clock.current,
+        avg_speed:
+          clock.current > 0 ? (live.distance / clock.current) * 3600 : 0,
+      };
+      current.current = next;
+      setSession(next);
+      if (Math.floor(next.duration) % 5 === 0)
+        setDraftError(!draftService.write(next));
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [sessionId, commit, finish]); // A stable session id owns exactly one timer.
+  }, [sessionId]); // A stable session id owns exactly one timer.
   useEffect(
     () => () => {
       stopGps.current();
@@ -326,7 +332,7 @@ export function useSession(
       pausedRef.current = true;
       setPaused(true);
       filter.current.reset();
-      setWaitingFix(!current.current.demo);
+      setWaitingFix(true);
       setDraftError(!draftService.write(current.current));
       stopSpeaking();
     };
@@ -340,7 +346,7 @@ export function useSession(
     tickAt.current = performance.now();
     if (current.current) setDraftError(!draftService.write(current.current));
     filter.current.reset();
-    setWaitingFix(!current.current?.demo);
+    setWaitingFix(true);
     stopSpeaking();
     announce(value ? "pauseVoice" : "resumeVoice");
   };
@@ -368,6 +374,7 @@ export function useSession(
     gpsError,
     gpsAccuracy,
     waitingFix,
+    motion,
     completed,
     start,
     finish,

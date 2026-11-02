@@ -107,10 +107,7 @@ export function SessionCard({
         <TypeIcon type={session.type} />
       </span>
       <span className="session-content">
-        <strong>
-          {t(session.type)}
-          {session.demo && <small> · {t("simulated")}</small>}
-        </strong>
+        <strong>{t(session.type)}</strong>
         <small>{date(session.start_time, language)}</small>
         <span>
           <b>
@@ -125,6 +122,8 @@ export function SessionCard({
             : session.type === "bike"
               ? `${t("avgSpeed")} ${number(session.avg_speed, language)} ${t("speedUnit")}`
               : `${t("avgPace")} ${pace(calculateAveragePace(session.distance, session.duration))}/${t("distanceUnit")}`}
+          {session.steps != null &&
+            ` · ${t("steps")} ${number(session.steps, language, 0)}`}
         </small>
       </span>
       <ArrowUpRight size={19} />

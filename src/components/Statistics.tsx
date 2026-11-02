@@ -5,7 +5,7 @@ import { calculateAveragePace, calculateAverageSpeed } from "../utils/physics";
 import { Metric, Section } from "./ui";
 export function Statistics({ sessions }: { sessions: Session[] }) {
   const { t, language } = useI18n();
-  const real = sessions.filter((s) => !s.demo);
+  const real = sessions;
   const distance = real.reduce((a, s) => a + s.distance, 0),
     time = real.reduce((a, s) => a + s.duration, 0);
   const foot = real.filter((s) => s.type === "walk" || s.type === "run");
@@ -43,7 +43,7 @@ export function Statistics({ sessions }: { sessions: Session[] }) {
         .reduce((a, s) => a + s.distance, 0),
     };
   });
-  const max = Math.max(1, ...days.map((d) => d.km));
+  const max = days.reduce((m, d) => Math.max(m, d.km), 1);
   return (
     <Section title={t("statistics")}>
       <p className="muted">{t("realOnly")}</p>
@@ -62,7 +62,10 @@ export function Statistics({ sessions }: { sessions: Session[] }) {
         />
         <Metric
           label={t("maxSpeed")}
-          value={number(Math.max(0, ...real.map((s) => s.max_speed)), language)}
+          value={number(
+            real.reduce((m, s) => Math.max(m, s.max_speed), 0),
+            language,
+          )}
           unit={t("speedUnit")}
         />
         <Metric
