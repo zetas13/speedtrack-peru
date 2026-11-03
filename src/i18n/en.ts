@@ -309,6 +309,19 @@ export const en: Record<keyof typeof es, string> = {
     "A journey is active. Return to it using the bottom navigation.",
   gpsWaiting: "Searching for a GPS signal…",
   gpsReady: "GPS ready",
+  backgroundTitle: "SpeedTrack Perú — activity in progress",
+  backgroundNotification: "GPS active. Tap to return to your activity.",
+  backgroundChoice: "Continue with screen locked",
+  backgroundExplanation:
+    "If enabled, SpeedTrack will use your location during this activity even with the screen locked or another app open. It will store the route on this phone and sync it to your account when you finish. A notification remains while GPS is active.",
+  backgroundDecline:
+    "You can leave this off and record only with the app open. Permissions are requested when you start.",
+  backgroundInfo:
+    "Android background recording active. You can lock the screen; do not force stop the app.",
+  backgroundPaused:
+    "Activity paused. GPS is stopped; resume from the app to continue.",
+  backgroundError:
+    "Background recording could not be secured. Check precise location, notifications and storage. If the activity continues in foreground mode, keep the app open. Recoverable data is retained.",
   emptyActivity:
     "No valid movement was recorded. The activity was not saved. Check precise location permission and wait for GPS to be ready before moving.",
   seed: "Preloaded example",

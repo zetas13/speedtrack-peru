@@ -1,4 +1,5 @@
 import { gpsPolicy } from "../utils/gpsFilter";
+import { backgroundSupported } from "../services/backgroundTracking";
 import { useState } from "react";
 import {
   Bike,
@@ -26,6 +27,8 @@ import {
 import { duration, number, pace } from "../utils/formatters";
 interface Props {
   blockedStart?: boolean;
+  trackingBusy?: boolean;
+  backgroundActive?: boolean;
   vehicle: boolean;
   session: Session | null;
   paused: boolean;
@@ -39,6 +42,7 @@ interface Props {
     demo: boolean,
     goal: number | null,
     navigation?: NavigationPlan,
+    background?: boolean,
   ) => void;
   updateNavigation: (plan: NavigationPlan | undefined) => void;
   finish: () => void;
@@ -46,6 +50,8 @@ interface Props {
 }
 export function TrackerPage({
   blockedStart,
+  trackingBusy,
+  backgroundActive,
   vehicle,
   session,
   paused,
@@ -64,6 +70,7 @@ export function TrackerPage({
     [demo, setDemo] = useState(false),
     [goal, setGoal] = useState("");
   const [navigation, setNavigation] = useState<NavigationPlan>();
+  const [background, setBackground] = useState(false);
   const s =
     session && (session.type === "vehicle") === vehicle ? session : null;
   const current = s?.measurements.at(-1),
@@ -150,9 +157,30 @@ export function TrackerPage({
               </label>
             )}
             <Toggle label={t("demo")} checked={demo} onChange={setDemo} />
+            {!demo && backgroundSupported() && (
+              <div className="notice">
+                <div>
+                  <p>{t("backgroundExplanation")}</p>
+                  <Toggle
+                    label={t("backgroundChoice")}
+                    checked={background}
+                    onChange={setBackground}
+                  />
+                  <p>{t("backgroundDecline")}</p>
+                </div>
+              </div>
+            )}
             <div className="notice">
               <Radio size={16} />
-              <p>{t(demo ? "demoInfo" : "gpsInfo")}</p>
+              <p>
+                {t(
+                  demo
+                    ? "demoInfo"
+                    : background && backgroundSupported()
+                      ? "backgroundInfo"
+                      : "gpsInfo",
+                )}
+              </p>
             </div>
             <button
               className="primary-button"
@@ -164,9 +192,10 @@ export function TrackerPage({
                     ? Number(goal)
                     : null,
                   navigation,
+                  background,
                 )
               }
-              disabled={!!session || blockedStart}
+              disabled={!!session || blockedStart || trackingBusy}
             >
               <Play size={19} fill="currentColor" />
               {t(vehicle ? "startVehicle" : "startActivity")}
@@ -200,6 +229,11 @@ export function TrackerPage({
               {t(s.demo ? "simulatedTime" : "time")} {duration(s.duration)}
             </span>
           </div>
+          {backgroundActive && (
+            <p className="notice">
+              {t(paused ? "backgroundPaused" : "backgroundInfo")}
+            </p>
+          )}
           {stale && <p className="notice">{t("gpsLost")}</p>}
           {(gpsAccuracy ?? current?.accuracy) != null && (
             <p className="muted">
@@ -282,11 +316,19 @@ export function TrackerPage({
                     </div>
                   )}
                   <div className="session-controls">
-                    <button className="secondary-button" onClick={togglePause}>
+                    <button
+                      className="secondary-button"
+                      onClick={togglePause}
+                      disabled={trackingBusy}
+                    >
                       {paused ? <Play size={17} /> : <Pause size={17} />}
                       {t(paused ? "resume" : "pause")}
                     </button>
-                    <button className="finish-button" onClick={finish}>
+                    <button
+                      className="finish-button"
+                      onClick={finish}
+                      disabled={trackingBusy}
+                    >
                       <Square size={15} fill="currentColor" />
                       {t("finish")}
                     </button>

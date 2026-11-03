@@ -20,6 +20,10 @@ import { translate } from "../i18n";
 import { gpsPolicy, GpsFilter } from "../utils/gpsFilter";
 import { draftService } from "../services/draftService";
 import { routeProgress, recentSpeed, userEta } from "../utils/navigation";
+import {
+  BackgroundTracker,
+  backgroundSupported,
+} from "../services/backgroundTracking";
 export function useSession(
   settings: Settings,
   onSave: (session: Session) => boolean,
@@ -32,12 +36,22 @@ export function useSession(
   const [waitingFix, setWaitingFix] = useState(false);
   const [emptyActivity, setEmptyActivity] = useState(false);
   const permissionPending = useRef(false);
+  const nativeTracker = useRef<BackgroundTracker | null>(null);
+  const nativeMode = useRef(false);
+  const nativeDiagnostics = useRef<object | null>(null);
+  const busyRef = useRef(false);
+  const [trackingBusy, setTrackingBusy] = useState(backgroundSupported);
+  const [backgroundActive, setBackgroundActive] = useState(false);
+  const [backgroundError, setBackgroundError] = useState(false);
+  const [trackingUnavailable, setTrackingUnavailable] = useState(false);
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     const target = window as unknown as {
       speedtrackGpsDiagnostics?: () => unknown;
     };
-    target.speedtrackGpsDiagnostics = () => ({ ...filter.current.diagnostics });
+    target.speedtrackGpsDiagnostics = () => ({
+      ...(nativeDiagnostics.current ?? filter.current.diagnostics),
+    });
     return () => {
       delete target.speedtrackGpsDiagnostics;
     };
@@ -80,34 +94,59 @@ export function useSession(
     },
     [],
   );
-  const finish = useCallback(() => {
-    const s = current.current;
-    if (!s) return;
-    stopGps.current();
-    current.current = null;
-    if (!s.demo && s.distance <= 0) {
-      draftService.clear(owner);
-      setDraft(null);
+  const finish = useCallback(async () => {
+    let s = current.current;
+    if (!s || busyRef.current) return;
+    busyRef.current = true;
+    setTrackingBusy(true);
+    try {
+      if (nativeMode.current) {
+        const drained = await nativeTracker.current!.pause(true);
+        if (!drained) throw new Error("Missing native session");
+        s = drained.session;
+      }
+      stopGps.current();
+      current.current = null;
+      if (!s.demo && s.distance <= 0) {
+        draftService.clear(owner);
+        setDraft(null);
+        setSession(null);
+        setPaused(false);
+        setEmptyActivity(true);
+        stopSpeaking();
+        if (nativeMode.current) await nativeTracker.current!.acknowledge(s.id);
+        nativeMode.current = false;
+        setBackgroundActive(false);
+        return;
+      }
+      const result = { ...s, end_time: new Date().toISOString() };
+      if (saveRef.current(result)) {
+        if (nativeMode.current) await nativeTracker.current!.acknowledge(s.id);
+        draftService.clear(owner);
+        setDraft(null);
+      } else {
+        draftService.write(result);
+        setDraft(result);
+        setDraftError(true);
+      }
+      setCompleted(result);
       setSession(null);
       setPaused(false);
-      setEmptyActivity(true);
+      nativeMode.current = false;
+      setBackgroundActive(false);
       stopSpeaking();
-      return;
+      announce(s.type === "vehicle" ? "vehicleFinishVoice" : "finishVoice");
+    } catch {
+      setBackgroundError(true);
+      // Keep a recoverable session if stop, drain or durable acknowledgement fails.
+      if (s) {
+        current.current = s;
+        setSession(s);
+      }
+    } finally {
+      busyRef.current = false;
+      setTrackingBusy(false);
     }
-    const result = { ...s, end_time: new Date().toISOString() };
-    if (saveRef.current(result)) {
-      draftService.clear(owner);
-      setDraft(null);
-    } else {
-      draftService.write(result);
-      setDraft(result);
-      setDraftError(true);
-    }
-    setCompleted(result);
-    setSession(null);
-    setPaused(false);
-    stopSpeaking();
-    announce(s.type === "vehicle" ? "vehicleFinishVoice" : "finishVoice");
   }, [announce, owner]);
   const commit = useCallback(
     (next: Session) => {
@@ -233,13 +272,17 @@ export function useSession(
     [announce],
   );
   const start = useCallback(
-    (
+    async (
       type: ActivityType,
       demo: boolean,
       goal: number | null,
       navigation?: NavigationPlan,
+      background = false,
     ) => {
-      if (current.current || draftService.read(owner)) return;
+      if (busyRef.current || current.current || draftService.read(owner))
+        return;
+      busyRef.current = true;
+      setTrackingBusy(true);
       stopGps.current();
       stopSpeaking();
       const s = newSession(type, demo, settingsRef.current.speed_limit, goal);
@@ -253,6 +296,8 @@ export function useSession(
       setGpsError(false);
       setCompleted(null);
       setEmptyActivity(false);
+      setBackgroundError(false);
+      nativeDiagnostics.current = null;
       clock.current = 0;
       tickAt.current = performance.now();
       filter.current = new GpsFilter();
@@ -266,6 +311,49 @@ export function useSession(
       setWaitingFix(!demo);
       permissionPending.current = !demo;
       announce("startVoice");
+      if (!demo && background && nativeTracker.current) {
+        try {
+          const language = settingsRef.current.language;
+          if (
+            await nativeTracker.current.start(
+              s,
+              translate(language, "backgroundTitle"),
+              translate(language, "backgroundNotification"),
+            )
+          ) {
+            nativeMode.current = true;
+            setBackgroundActive(true);
+            permissionPending.current = false;
+            busyRef.current = false;
+            setTrackingBusy(false);
+            return;
+          }
+          setBackgroundError(true);
+        } catch {
+          // A failed service start must not silently claim background protection.
+          setBackgroundError(true);
+          try {
+            if (await nativeTracker.current.poll()) {
+              permissionPending.current = false;
+              busyRef.current = false;
+              setTrackingBusy(false);
+              return;
+            }
+          } catch {
+            // Unknown native state: keep recovery available instead of starting
+            // a second sensor or overwriting an unacknowledged journal.
+            nativeMode.current = true;
+            setPaused(true);
+            pausedRef.current = true;
+            permissionPending.current = false;
+            busyRef.current = false;
+            setTrackingBusy(false);
+            return;
+          }
+        }
+      }
+      nativeMode.current = false;
+      setBackgroundActive(false);
       if (!demo)
         stopGps.current = watchGps(
           (point) => {
@@ -312,15 +400,81 @@ export function useSession(
             permissionPending.current = false;
           },
         );
+      busyRef.current = false;
+      setTrackingBusy(false);
     },
     [commit, owner, announce],
   );
+  useEffect(() => {
+    if (!backgroundSupported()) return;
+    let live = true;
+    let unlisten: (() => void) | undefined;
+    busyRef.current = true;
+    const tracker = new BackgroundTracker(
+      owner,
+      (view) => {
+        if (!live) return;
+        nativeMode.current = true;
+        nativeDiagnostics.current = view.diagnostics;
+        setBackgroundActive(!view.ended);
+        current.current ??= view.session;
+        clock.current = view.session.duration;
+        commit(view.session);
+        pausedRef.current = view.paused;
+        setPaused(view.paused);
+        setWaitingFix(view.waitingFix);
+        setGpsAccuracy(view.accuracy);
+      },
+      () => {
+        if (live) setBackgroundError(true);
+      },
+    );
+    nativeTracker.current = tracker;
+    void (async () => {
+      try {
+        const release = await tracker.listen();
+        if (!live) {
+          release();
+          return;
+        }
+        unlisten = release;
+        const restored = await tracker.poll();
+        if (!live) return;
+        if (restored?.ended) {
+          current.current = null;
+          setSession(null);
+          setDraft(restored.session);
+          nativeMode.current = false;
+        }
+      } catch {
+        if (live) {
+          setBackgroundError(true);
+          setTrackingUnavailable(true);
+        }
+      } finally {
+        if (live) {
+          busyRef.current = false;
+          setTrackingBusy(false);
+        }
+      }
+    })();
+    return () => {
+      live = false;
+      unlisten?.();
+    };
+  }, [commit, owner]);
   const sessionId = session?.id;
   useEffect(() => {
     if (!sessionId) return;
     const timer = window.setInterval(() => {
       const live = current.current;
       if (!live || pausedRef.current) return;
+      if (nativeMode.current) {
+        void nativeTracker.current
+          ?.poll()
+          .catch(() => setBackgroundError(true));
+        return;
+      }
       const now = performance.now();
       const dt = Math.max(0, (now - tickAt.current) / 1000);
       tickAt.current = now;
@@ -352,6 +506,13 @@ export function useSession(
   );
   useEffect(() => {
     const hide = () => {
+      if (nativeMode.current) {
+        if (!document.hidden)
+          void nativeTracker.current
+            ?.poll()
+            .catch(() => setBackgroundError(true));
+        return;
+      }
       if (!document.hidden || !current.current || permissionPending.current)
         return;
       pausedRef.current = true;
@@ -364,7 +525,29 @@ export function useSession(
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
-  const togglePause = () => {
+  const togglePause = async () => {
+    if (busyRef.current) return;
+    if (nativeMode.current) {
+      busyRef.current = true;
+      setTrackingBusy(true);
+      try {
+        if (pausedRef.current) {
+          const language = settingsRef.current.language;
+          await nativeTracker.current!.resume(
+            translate(language, "backgroundTitle"),
+            translate(language, "backgroundNotification"),
+          );
+        } else await nativeTracker.current!.pause();
+        stopSpeaking();
+        announce(pausedRef.current ? "pauseVoice" : "resumeVoice");
+      } catch {
+        setBackgroundError(true);
+      } finally {
+        busyRef.current = false;
+        setTrackingBusy(false);
+      }
+      return;
+    }
     const value = !pausedRef.current;
     pausedRef.current = value;
     setPaused(value);
@@ -380,26 +563,43 @@ export function useSession(
     draftError,
     draft,
     emptyActivity,
-    recoverDraft: () => {
-      if (!draft) return;
-      if (!draft.demo && draft.distance <= 0) {
-        draftService.clear(owner);
-        setDraft(null);
-        setEmptyActivity(true);
-        return;
-      }
-      const recovered = {
-        ...draft,
-        end_time:
-          draft.end_time ??
-          new Date(
-            Date.parse(draft.start_time) + draft.duration * 1000,
-          ).toISOString(),
-      };
-      if (saveRef.current(recovered)) {
-        draftService.clear(owner);
-        setDraft(null);
-        setDraftError(false);
+    trackingBusy,
+    trackingUnavailable,
+    backgroundActive,
+    backgroundError,
+    recoverDraft: async () => {
+      if (!draft || busyRef.current) return;
+      busyRef.current = true;
+      setTrackingBusy(true);
+      try {
+        if (!draft.demo && draft.distance <= 0) {
+          if (backgroundSupported())
+            await nativeTracker.current?.acknowledge(draft.id);
+          draftService.clear(owner);
+          setDraft(null);
+          setEmptyActivity(true);
+          return;
+        }
+        const recovered = {
+          ...draft,
+          end_time:
+            draft.end_time ??
+            new Date(
+              Date.parse(draft.start_time) + draft.duration * 1000,
+            ).toISOString(),
+        };
+        if (saveRef.current(recovered)) {
+          if (backgroundSupported())
+            await nativeTracker.current?.acknowledge(draft.id);
+          draftService.clear(owner);
+          setDraft(null);
+          setDraftError(false);
+        }
+      } catch {
+        setBackgroundError(true);
+      } finally {
+        busyRef.current = false;
+        setTrackingBusy(false);
       }
     },
     paused,
@@ -421,6 +621,10 @@ export function useSession(
       current.current = next;
       setSession(next);
       setDraftError(!draftService.write(next));
+      if (nativeMode.current)
+        void nativeTracker.current
+          ?.navigation(navigation)
+          .catch(() => setBackgroundError(true));
     },
     clearCompleted: () => setCompleted(null),
   };

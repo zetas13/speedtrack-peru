@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>
 
@@ -10,6 +10,9 @@
         android:roundIcon="@drawable/speedtrack_icon"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+
+        <service android:name="com.equimaps.capacitor_background_geolocation.BackgroundGeolocationService"
+            android:exported="false" android:foregroundServiceType="location" tools:replace="android:exported" />
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
@@ -47,7 +50,11 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
-    <!-- Foreground only: no background location permission. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- User-started location FGS: ACCESS_BACKGROUND_LOCATION is not required.
+         No boot receiver or background start/restart is used. -->
 
     <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

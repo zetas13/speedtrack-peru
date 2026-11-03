@@ -295,6 +295,20 @@ export const qu: Record<TranslationKey, string> = {
   sessionActive: "Huk puriy qallarisqa kachkan. Ura siq’imanta kutiy.",
   gpsWaiting: "GPS señal nisqata maskachkan…",
   gpsReady: "GPS listoña",
+  backgroundTitle: "SpeedTrack Perú — puriy kachkan",
+  backgroundNotification:
+    "GPS llamk'achkan. Purisqaykiman kutinaykipaq ñit'iy.",
+  backgroundChoice: "Pantalla wisq'asqawanpas qillqay",
+  backgroundExplanation:
+    "Kayta akllaspaqa SpeedTrack tarisqaykita kay puriypi qillqanqa, pantalla wisq'asqapas huk app kichasqapas. Purisqaykita kay telefonopi waqaychanqa, tukuspa cuentaykiman apachinqa. GPS llamk'achkaptin willakuy rikurinqa.",
+  backgroundDecline:
+    "Mana akllaspaqa app kichasqallawan qillqayta atinki. Qallariypi permisokunata mañakunqa.",
+  backgroundInfo:
+    "Android qhipapi qillqachkan. Pantallata wisq'ayta atinki; app nisqata ama kallpawan sayachiychu.",
+  backgroundPaused:
+    "Puriy samachkan. GPS sayasqa; app nisqapi yapamanta qallariy.",
+  backgroundError:
+    "Qhipapi qillqayta mana allinta takyachiy atikunchu. Chiqap taripayta, willakuykunata, waqaychana kititapas qhaway. Ñawpaqpi qillqachkaptinqa app kichasqata saqiy. Kutichina datokuna waqaychasqa kachkan.",
   emptyActivity:
     "Mana allin kuyuyta qillqasqachu. Puriy mana waqaychasqachu. Chiqap taripay permisota qhaway, GPS listo kanan kama suyay manaraq purispa.",
   seed: "Ñawpaq churasqa qhawarichiy",

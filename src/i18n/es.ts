@@ -310,6 +310,19 @@ export const es = {
     "Hay un recorrido activo. Puedes volver desde la barra inferior.",
   gpsWaiting: "Buscando señal GPS…",
   gpsReady: "GPS listo",
+  backgroundTitle: "SpeedTrack Perú — actividad en curso",
+  backgroundNotification: "GPS activo. Toca para volver a tu actividad.",
+  backgroundChoice: "Continuar con pantalla bloqueada",
+  backgroundExplanation:
+    "Si lo activas, SpeedTrack usará tu ubicación durante esta actividad aunque bloquees la pantalla o cambies de aplicación. Guardará el recorrido en este teléfono y lo sincronizará con tu cuenta al finalizar. Mostrará una notificación mientras el GPS esté activo.",
+  backgroundDecline:
+    "Puedes dejarlo desactivado y registrar solo con la app abierta. Los permisos se piden al iniciar.",
+  backgroundInfo:
+    "Registro Android en segundo plano activo. Puedes bloquear la pantalla; no fuerces la detención de la app.",
+  backgroundPaused:
+    "Actividad en pausa. El GPS está detenido; reanuda desde la app para continuar.",
+  backgroundError:
+    "No se pudo asegurar el registro en segundo plano. Revisa ubicación precisa, notificaciones y almacenamiento. Si la actividad continúa en primer plano, mantén la app abierta. Conservamos los datos recuperables.",
   emptyActivity:
     "No se registró movimiento válido. La actividad no se guardó. Revisa el permiso de ubicación precisa y espera a que el GPS esté listo antes de moverte.",
   seed: "Ejemplo precargado",
