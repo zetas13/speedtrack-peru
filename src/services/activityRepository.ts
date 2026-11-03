@@ -9,6 +9,7 @@ export function validSession(value: unknown): value is Session {
     typeof s.user_id === "string" &&
     ["walk", "run", "bike", "vehicle"].includes(s.type) &&
     typeof s.demo === "boolean" &&
+    (s.steps === undefined || (Number.isFinite(s.steps) && s.steps >= 0)) &&
     Number.isFinite(Date.parse(s.start_time)) &&
     [
       s.distance,
@@ -56,6 +57,7 @@ export function validSession(value: unknown): value is Session {
 }
 export function mergeSessions(remote: Session[], local: Session[]) {
   // Completed sessions are immutable. Local outbox entries win until acknowledged.
+  // Local simulations remain visible; pendingSessions excludes them from uploads.
   return [
     ...new Map([...remote, ...local].map((s) => [s.id, s])).values(),
   ].sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time));
@@ -65,7 +67,7 @@ export function pendingSessions(owner: string): Session[] {
   try {
     const rows: unknown = JSON.parse(localStorage.getItem(key(owner)) || "[]");
     return Array.isArray(rows)
-      ? rows.filter(validSession).filter((s) => s.user_id === owner)
+      ? rows.filter(validSession).filter((s) => !s.demo && s.user_id === owner)
       : [];
   } catch {
     return [];

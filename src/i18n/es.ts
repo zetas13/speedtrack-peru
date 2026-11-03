@@ -1,4 +1,13 @@
 export const es = {
+  simulation: "Simulación",
+  simulatedAccuracy: "No aplica · datos simulados",
+  realOnly:
+    "Solo actividades reales. Las demostraciones no afectan tus estadísticas.",
+  simulatedTime: "Tiempo simulado",
+  simulated: "Demostración",
+  demoInfo:
+    "45 segundos reales · tiempo del recorrido ×40 en deporte y ×1 en vehículo. Datos simulados.",
+  demo: "Usar recorrido de demostración",
   authEmailExists:
     "Este correo ya está registrado. Inicia sesión o recupera tu contraseña.",
   authEmailInvalid: "Escribe un correo electrónico válido que puedas abrir.",
@@ -22,6 +31,8 @@ export const es = {
   authUnknown:
     "No se pudo completar la operación. Inténtalo de nuevo; si continúa, comunica la referencia del error al responsable.",
   authReference: "Referencia: {code} ({status})",
+  authAccountCreated:
+    "Cuenta creada. Tu sesión está iniciada y tus datos se guardan en tu cuenta.",
   authSignupSent:
     "Revisa tu correo para confirmar la cuenta. Si ya tenías una, inicia sesión o recupera la contraseña.",
   authRecoverySent:
@@ -66,10 +77,6 @@ export const es = {
   password: "Contraseña (mínimo 8 caracteres)",
   saveProfile: "Guardar perfil",
   logout: "Cerrar sesión",
-  checkEmail:
-    "Solicitud completada. Revisa tu correo si requiere confirmación.",
-  accountError:
-    "No se pudo completar. Revisa tus datos, conexión y configuración de la cuenta.",
   cloudSetup:
     "Modo local disponible. Configura Supabase para acceder a cuentas y sincronización.",
   privacyInfo:
@@ -77,7 +84,7 @@ export const es = {
   finishBeforeAccount: "Finaliza la actividad antes de cambiar de cuenta.",
   importLocal: "Importar mis recorridos locales",
   importInfo:
-    "Importa solamente recorridos reales de este dispositivo a esta cuenta. No incluye ejemplos ni simulaciones. Úsalo solo si estos datos son tuyos.",
+    "Importa solamente recorridos reales de este dispositivo a esta cuenta. Úsalo solo si estos datos son tuyos.",
   syncing: "Sincronizando…",
   synced: "Historial sincronizado",
   syncPending: "Pendiente de sincronizar · reintentar",
@@ -105,25 +112,17 @@ export const es = {
   trafficFlow: "Fluido",
   trafficModerate: "Moderado",
   trafficCongested: "Congestionado",
-  trafficIncidents: "Incidentes y cierres",
   offRoute: "Fuera de ruta · vuelve a calcular",
   mapError: "Cartografía no disponible. El registro GPS continúa.",
   searchDestination: "Buscar destino",
   search: "Buscar",
   searchError: "No se encontraron resultados o el servicio no está disponible.",
-  total: "Total real",
   monthly: "Este mes",
   statistics: "Estadísticas",
-  realOnly:
-    "Solo actividades reales. Las demostraciones no afectan tus estadísticas.",
   paceChart: "Ritmo vs. tiempo",
-  nearArrival: "Estás cerca de tu destino.",
   gpsLost: "Señal GPS desactualizada. Esperando una nueva medición.",
-  offlineInfo: "Sin conexión: guardando en el dispositivo.",
   routeDistance: "Distancia de la ruta",
-  privacy: "Privacidad",
   physicsFormula: "Rapidez media = distancia total / tiempo activo",
-  simulation: "Simulación",
   greetUser: "Hola, {name}",
   settingsPending:
     "Preferencias guardadas localmente; sincronización pendiente.",
@@ -155,11 +154,6 @@ export const es = {
   goal: "Objetivo opcional",
   noGoal: "Sin objetivo",
   goalUnit: "Objetivo en kilómetros",
-  demo: "Usar recorrido de demostración",
-  demoSport: "Demo deportiva",
-  demoVehicle: "Demo vehículo",
-  demoInfo:
-    "45 segundos reales · tiempo del recorrido ×40 en deporte y ×1 en vehículo. Datos simulados.",
   gpsInfo:
     "Usamos tu ubicación para medir y dibujar el recorrido. Solicitamos permiso al iniciar o al centrar el mapa. Mantén la actividad abierta: al ocultarla se pausa.",
   start: "Iniciar",
@@ -168,7 +162,6 @@ export const es = {
   finish: "Finalizar",
   active: "En movimiento",
   paused: "En pausa",
-  simulated: "Demostración",
   realGps: "GPS real",
   time: "Tiempo",
   distance: "Distancia",
@@ -187,8 +180,6 @@ export const es = {
   noSplits: "Los splits aparecerán al completar cada kilómetro.",
   kilometers: "Kilómetros completos",
   route: "Tu recorrido",
-  conceptual: "Ruta conceptual · sin cartografía",
-  noRoute: "La ruta aparecerá con las primeras mediciones.",
   live: "En vivo",
   chart: "Velocidad vs. tiempo",
   seconds: "Tiempo (s)",
@@ -243,10 +234,8 @@ export const es = {
   uncertaintyDesc:
     "El GPS, el muestreo y el entorno afectan las estimaciones. Las mediciones del teléfono son aproximaciones.",
   accuracy: "Precisión GPS estimada",
-  simulatedAccuracy: "No aplica · datos simulados",
   unknownAccuracy: "Sin medición disponible",
   locationUnavailable: "Ubicación no disponible.",
-  useDemo: "Usar modo demostración",
   config: "Configuración",
   general: "General",
   language: "Idioma",
@@ -261,7 +250,6 @@ export const es = {
   voice: "Asistente de voz",
   enabled: "Activado",
   disabled: "Desactivado",
-  voiceLanguage: "Idioma de voz",
   kilometerAlerts: "Avisar cada kilómetro",
   safetyAlerts: "Avisos de seguridad",
   approachingAlerts: "Avisar al aproximarse al límite",
@@ -279,7 +267,7 @@ export const es = {
     "“SpeedTrack, ¿cuánto llevo?” · “Pausa entrenamiento.” · “¿Cuál es mi velocidad?”",
   about: "Acerca del proyecto",
   aboutText:
-    "SpeedTrack Perú es un prototipo académico desarrollado para Física I e Ingeniería de Sistemas. Busca aplicar conceptos de cinemática mediante el análisis de recorridos reales y simulados.",
+    "SpeedTrack Perú es un prototipo académico desarrollado para Física I e Ingeniería de Sistemas. Busca aplicar conceptos de cinemática mediante el análisis de tus recorridos reales.",
   disclaimer:
     "SpeedTrack Perú no sustituye instrumentos certificados, sistemas oficiales de tránsito ni dispositivos profesionales de medición.",
   local: "Datos guardados en este dispositivo",
@@ -305,7 +293,6 @@ export const es = {
   accelerateVoice: "Se detectó una aceleración fuerte.",
   timeVoice: "Llevas treinta minutos de actividad.",
   bestVoice: "Nuevo mejor ritmo.",
-  endDemo: "La demostración se guarda automáticamente al finalizar.",
   sessionActive:
     "Hay un recorrido activo. Puedes volver desde la barra inferior.",
   gpsWaiting: "Buscando señal GPS…",
@@ -326,9 +313,13 @@ export const es = {
   emptyActivity:
     "No se registró movimiento válido. La actividad no se guardó. Revisa el permiso de ubicación precisa y espera a que el GPS esté listo antes de moverte.",
   seed: "Ejemplo precargado",
-  simulatedTime: "Tiempo simulado",
   best: "Tu progreso empieza aquí",
-  sampleLabel: "Recorridos de ejemplo",
-  resetView: "Regresar al inicio",
+  motionSensor: "Sensor de movimiento",
+  motionMoving: "en movimiento",
+  motionStill: "quieto",
+  steps: "Pasos",
+  stepsEstimate: "≈ {value} m estimados por pasos",
+  motionNoGps:
+    "El sensor detecta movimiento, pero el GPS no lo confirma. Sal a un lugar abierto y revisa que la ubicación sea precisa.",
 };
 export type TranslationKey = keyof typeof es;

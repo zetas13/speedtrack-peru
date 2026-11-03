@@ -6,7 +6,8 @@ import type {
   SpeedStatus,
   NavigationPlan,
 } from "../types";
-import { DEMO_SECONDS, demoMeasurement, newSession } from "../data/demo";
+import { DEMO_SECONDS, demoMeasurement } from "../utils/simulation";
+import { newSession } from "../utils/session";
 import {
   addMeasurement,
   calculateAveragePace,
@@ -15,6 +16,7 @@ import {
 } from "../utils/physics";
 import { navigationForMode } from "../services/routingService";
 import { watchGps } from "../services/gpsService";
+import { useMotion } from "./useMotion";
 import { announceVoice, stopSpeaking } from "../services/voiceService";
 import { translate } from "../i18n";
 import { gpsPolicy, GpsFilter } from "../utils/gpsFilter";
@@ -57,6 +59,14 @@ export function useSession(
     };
   }, []);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const motion = useMotion(
+    !!session && !session.demo && !paused && !backgroundActive,
+    session?.id,
+  );
+  const motionRef = useRef(motion);
+  useEffect(() => {
+    motionRef.current = motion;
+  }, [motion]);
   const lastGpsWarning = useRef(-Infinity);
   const lastProgress = useRef(0);
   const [draftError, setDraftError] = useState(false);
@@ -119,7 +129,17 @@ export function useSession(
         setBackgroundActive(false);
         return;
       }
-      const result = { ...s, end_time: new Date().toISOString() };
+      const counted = motionRef.current;
+      const result = {
+        ...s,
+        end_time: new Date().toISOString(),
+        ...(!s.demo &&
+        !nativeMode.current &&
+        (s.type === "walk" || s.type === "run") &&
+        counted.supported
+          ? { steps: counted.steps }
+          : {}),
+      };
       if (saveRef.current(result)) {
         if (nativeMode.current) await nativeTracker.current!.acknowledge(s.id);
         draftService.clear(owner);
@@ -285,7 +305,8 @@ export function useSession(
       setTrackingBusy(true);
       stopGps.current();
       stopSpeaking();
-      const s = newSession(type, demo, settingsRef.current.speed_limit, goal);
+      const s = newSession(type, settingsRef.current.speed_limit, goal);
+      s.demo = demo;
       s.user_id = owner;
       s.navigation = navigationForMode(navigation, type);
       current.current = s;
@@ -481,19 +502,19 @@ export function useSession(
       clock.current += live.demo ? 1 : dt;
       if (live.demo) {
         commit(addMeasurement(live, demoMeasurement(live, clock.current)));
-        if (clock.current >= DEMO_SECONDS) finish();
-      } else {
-        const next = {
-          ...live,
-          duration: clock.current,
-          avg_speed:
-            clock.current > 0 ? (live.distance / clock.current) * 3600 : 0,
-        };
-        current.current = next;
-        setSession(next);
-        if (Math.floor(next.duration) % 5 === 0)
-          setDraftError(!draftService.write(next));
+        if (clock.current >= DEMO_SECONDS) void finish();
+        return;
       }
+      const next = {
+        ...live,
+        duration: clock.current,
+        avg_speed:
+          clock.current > 0 ? (live.distance / clock.current) * 3600 : 0,
+      };
+      current.current = next;
+      setSession(next);
+      if (Math.floor(next.duration) % 5 === 0)
+        setDraftError(!draftService.write(next));
     }, 1000);
     return () => window.clearInterval(timer);
   }, [sessionId, commit, finish]); // A stable session id owns exactly one timer.
@@ -518,7 +539,7 @@ export function useSession(
       pausedRef.current = true;
       setPaused(true);
       filter.current.reset();
-      setWaitingFix(!current.current.demo);
+      setWaitingFix(!current.current?.demo);
       setDraftError(!draftService.write(current.current));
       stopSpeaking();
     };
@@ -606,6 +627,7 @@ export function useSession(
     gpsError,
     gpsAccuracy,
     waitingFix,
+    motion,
     completed,
     start,
     finish,

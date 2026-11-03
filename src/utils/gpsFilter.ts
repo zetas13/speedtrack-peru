@@ -138,15 +138,14 @@ export class GpsFilter {
       return this.reject("implausible_device_speed");
     // Keep an anchor until displacement clears uncertainty. Device speed alone
     // must never turn stationary coordinate jitter into accumulated distance.
-    const stationary =
-      distance * 1000 <
-      Math.max(
-        movementPolicy[mode].floor,
-        Math.min(
-          movementPolicy[mode].cap,
-          Math.min(prev.accuracy, p.accuracy) * movementPolicy[mode].fraction,
-        ),
-      );
+    const clearanceM = Math.max(
+      movementPolicy[mode].floor,
+      Math.min(
+        movementPolicy[mode].cap,
+        Math.min(prev.accuracy, p.accuracy) * movementPolicy[mode].fraction,
+      ),
+    );
+    const stationary = distance * 1000 < clearanceM;
     const rawSpeed = stationary ? 0 : raw; // v = accepted displacement / time
     const maxA =
       mode === "vehicle"
@@ -158,15 +157,27 @@ export class GpsFilter {
         maxA + 1e-6
     )
       return this.reject("implausible_acceleration");
-    const alpha = 1 - Math.exp(-sampleDt / this.policy.smoothingSeconds);
+    // El peso depende del tiempo que cubre la medición (desde el ancla), no del
+    // intervalo entre fixes: con precisión baja el ancla tarda varios segundos
+    // en superar el ruido y una medición de 6 s no debe pesar como una de 1 s.
+    const alpha =
+      1 - Math.exp(-Math.max(dt, sampleDt) / this.policy.smoothingSeconds);
     // A sub-noise walking step is not evidence of a stop. Hold an established
-    // estimate briefly while the anchor gathers enough displacement; a device
-    // stop or three seconds without confirmed displacement clears it.
+    // estimate while the anchor gathers displacement, bounded to 3-10 seconds.
+    // Zero device speed cannot override confirmed coordinate movement.
     const pendingMotion =
       stationary &&
-      !(device !== null && device < this.policy.stationaryKmh) &&
-      dt <= this.policy.stationaryHoldSeconds &&
-      this.speed >= this.policy.stationaryKmh;
+      this.speed >= this.policy.stationaryKmh &&
+      // Tiempo esperado para superar el ruido a la velocidad actual (con
+      // margen), entre el mínimo configurado y 10 s.
+      dt <=
+        Math.min(
+          10,
+          Math.max(
+            this.policy.stationaryHoldSeconds,
+            (1.5 * clearanceM) / (this.speed / 3.6),
+          ),
+        );
     const speed = stationary
       ? pendingMotion
         ? this.speed

@@ -1612,7 +1612,7 @@ input[type="range"] {
   .live-activity.mode-vehicle
     .navigation-panel:has(.live-navigation)
     .map-canvas {
-    height: 200px;
+    height: 180px;
   }
   .live-activity .navigation-metrics .metric strong {
     font-size: 16px;
@@ -1667,4 +1667,19 @@ input[type="range"] {
     margin: 4px 0 0;
     font-size: 11px;
   }
+}
+
+/* Keep tracking actions reachable even with sensor, GPS and route notices. */
+.app-content:has(.live-activity) {
+  padding-bottom: 80px;
+}
+.live-activity .session-controls {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(73px + env(safe-area-inset-bottom));
+  z-index: 6;
+  margin: 0;
+  padding: 8px 0;
+  background: #101512;
 }

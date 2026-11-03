@@ -301,7 +301,7 @@ test("Android consent, background buffer, WebView reload, pause/resume and final
   ).toMatchObject({ state: null, watchers: 2, stops: 2 });
   await page.reload();
   await tab(page, "Historial");
-  await expect(page.locator(".session-card")).toHaveCount(4);
+  await expect(page.locator(".session-card")).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 async function mocks(page: Page) {
   await page.route("https://tiles.openfreemap.org/**", (r) =>
     r.fulfill({
@@ -61,6 +61,49 @@ async function mocks(page: Page) {
     return r.fulfill({ json: [] });
   });
 }
+// La app solo registra actividades reales: las pruebas emulan el GPS del
+// navegador en lugar de usar un modo de demostración.
+async function gps(context: BrowserContext) {
+  await context.grantPermissions(["geolocation"]);
+  await context.setGeolocation({
+    latitude: -12.12,
+    longitude: -77.03,
+    accuracy: 5,
+  });
+  await context.addInitScript(() => {
+    let next = 0;
+    const timers = new Map<number, number>();
+    navigator.geolocation.watchPosition = (callback) => {
+      const id = ++next;
+      const timer = window.setTimeout(() => {
+        for (const [offset, longitude] of [
+          [-2000, -77.03],
+          [0, -77.02996],
+        ]) {
+          callback({
+            timestamp: Date.now() + offset,
+            coords: {
+              latitude: -12.12,
+              longitude,
+              accuracy: 5,
+              speed: 0,
+              altitude: null,
+              altitudeAccuracy: null,
+              heading: null,
+            },
+          } as GeolocationPosition);
+        }
+      }, 0);
+      timers.set(id, timer);
+      return id;
+    };
+    navigator.geolocation.clearWatch = (id) => {
+      window.clearTimeout(timers.get(id));
+      timers.delete(id);
+    };
+  });
+}
+
 async function tab(page: Page, name: string) {
   await page
     .locator(".bottom-nav")
@@ -70,8 +113,10 @@ async function tab(page: Page, name: string) {
 
 test("an outbox quota failure preserves the draft until recovery can queue it", async ({
   page,
+  context,
 }) => {
   await mocks(page);
+  await gps(context);
   await page.goto("/");
   await tab(page, "Perfil");
   await page.getByLabel("Correo electrónico").fill("alice@example.com");
@@ -94,7 +139,6 @@ test("an outbox quota failure preserves the draft until recovery can queue it", 
     };
   });
   await tab(page, "Actividad");
-  await page.getByRole("checkbox", { name: /demostración/ }).check();
   await page
     .getByRole("button", { name: "Iniciar actividad", exact: true })
     .click();
@@ -173,7 +217,9 @@ test("registration and password recovery forms use Supabase Auth contracts", asy
   await page
     .getByRole("button", { name: "Recuperar contraseña", exact: true })
     .click();
-  await expect(page.getByText(/Si existe una cuenta con ese correo/)).toBeVisible();
+  await expect(
+    page.getByText(/Si existe una cuenta con ese correo/),
+  ).toBeVisible();
   expect(recoveryRequested).toBe(true);
   const token = [
     btoa(JSON.stringify({ alg: "HS256", typ: "JWT" })),
@@ -190,10 +236,29 @@ test("registration and password recovery forms use Supabase Auth contracts", asy
   // Opening the email link creates a document navigation; changing only the
   // fragment of the running app would not initialize Supabase again.
   await page.goto("about:blank");
-  await page.goto(
-    `/#access_token=${token}&refresh_token=test-refresh&expires_in=3600&token_type=bearer&type=recovery`,
+  // PKCE: el enlace del correo trae un código de un solo uso (no tokens en el
+  // hash). El verificador lo guardó resetPasswordForEmail en este mismo origen.
+  let exchanged = false;
+  await page.route(
+    "https://speedtrack-test.supabase.co/auth/v1/token?grant_type=pkce",
+    (r) => {
+      exchanged = r.request().postDataJSON().auth_code === "test-code";
+      return r.fulfill({
+        json: {
+          access_token: token,
+          token_type: "bearer",
+          expires_in: 3600,
+          refresh_token: "test-refresh",
+          user,
+        },
+      });
+    },
   );
-  await expect(page.getByRole("button", { name: "Guardar nueva contraseña", exact: true })).toBeVisible();
+  await page.goto("/?code=test-code");
+  await expect(
+    page.getByRole("button", { name: "Guardar nueva contraseña", exact: true }),
+  ).toBeVisible();
+  expect(exchanged).toBe(true);
   await page.reload();
   await page
     .getByLabel("Contraseña (mínimo 8 caracteres)")
@@ -205,12 +270,70 @@ test("registration and password recovery forms use Supabase Auth contracts", asy
   await expect(page.getByText(/Contraseña actualizada/)).toBeVisible();
 });
 
-test("Auth reports specific safe errors and expired email links", async ({ page }) => {
+test("sign up without email confirmation signs in immediately and keeps the session", async ({
+  page,
+}) => {
+  await mocks(page);
+  const id = "11111111-1111-4111-8111-111111111111";
+  const access_token = [
+    btoa(JSON.stringify({ alg: "HS256", typ: "JWT" })),
+    btoa(
+      JSON.stringify({
+        sub: id,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        role: "authenticated",
+        aud: "authenticated",
+      }),
+    ),
+    "test-signature",
+  ].join(".");
+  const user = {
+    id,
+    email: "alice@example.com",
+    aud: "authenticated",
+    role: "authenticated",
+    user_metadata: { name: "Alice" },
+    created_at: new Date().toISOString(),
+  };
+  await page.route(
+    "https://speedtrack-test.supabase.co/auth/v1/signup**",
+    (r) =>
+      // Con "Confirm email" desactivado el proyecto devuelve la sesión.
+      r.fulfill({
+        json: {
+          access_token,
+          refresh_token: "test-refresh",
+          token_type: "bearer",
+          expires_in: 3600,
+          user,
+        },
+      }),
+  );
+  await page.goto("/");
+  await tab(page, "Perfil");
+  await page.getByRole("button", { name: "Crear cuenta", exact: true }).click();
+  await page.getByLabel("Nombre", { exact: true }).fill("Alice");
+  await page.getByLabel("Correo electrónico").fill(user.email);
+  await page
+    .getByLabel("Contraseña (mínimo 8 caracteres)")
+    .fill("test-password");
+  await page.getByRole("button", { name: "Crear cuenta", exact: true }).click();
+  await expect(page.getByText("Hola, alice")).toBeVisible();
+  await expect(page.getByText(/Revisa tu correo/)).toHaveCount(0);
+  // La sesión persiste al recargar (guardada en el dispositivo).
+  await page.reload();
+  await expect(page.getByText("Hola, alice")).toBeVisible();
+});
+test("Auth reports specific safe errors and expired email links", async ({
+  page,
+}) => {
   await mocks(page);
   await page.goto("/");
   await tab(page, "Perfil");
   await page.getByLabel("Correo electrónico").fill("alice@example.com");
-  await page.getByLabel("Contraseña (mínimo 8 caracteres)").fill("password-test");
+  await page
+    .getByLabel("Contraseña (mínimo 8 caracteres)")
+    .fill("password-test");
   for (const [code, message] of [
     ["user_already_exists", "Este correo ya está registrado"],
     ["weak_password", "La contraseña no cumple"],
@@ -220,43 +343,63 @@ test("Auth reports specific safe errors and expired email links", async ({ page 
     ["invalid_credentials", "El correo o la contraseña no coinciden"],
     ["unexpected_failure", "No se pudo completar la operación"],
   ]) {
-    await page.route("**/auth/v1/token**", (r) => r.fulfill({ status: 400, headers: { "x-supabase-api-version": "2024-01-01", "access-control-expose-headers": "X-Supabase-Api-Version" }, json: { code, msg: "private-provider-detail" } }));
-    await page.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
+    await page.route("**/auth/v1/token**", (r) =>
+      r.fulfill({
+        status: 400,
+        headers: {
+          "x-supabase-api-version": "2024-01-01",
+          "access-control-expose-headers": "x-supabase-api-version",
+        },
+        json: { code, msg: "private-provider-detail" },
+      }),
+    );
+    await page
+      .getByRole("button", { name: "Iniciar sesión", exact: true })
+      .click();
     await expect(page.getByRole("status")).toContainText(message);
     await expect(page.getByRole("status")).toContainText(code);
-    await expect(page.locator("body")).not.toContainText("private-provider-detail");
+    await expect(page.locator("body")).not.toContainText(
+      "private-provider-detail",
+    );
   }
-  await page.route("**/auth/v1/token**", (r) => r.abort("internetdisconnected"));
-  await page.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("No pudimos conectar", { timeout: 20000 });
+  await page.route("**/auth/v1/token**", (r) =>
+    r.abort("internetdisconnected"),
+  );
+  await page
+    .getByRole("button", { name: "Iniciar sesión", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("No pudimos conectar", {
+    timeout: 20000,
+  });
   await page.goto("about:blank");
-  await page.goto("/#error=access_denied&error_code=otp_expired&error_description=private");
+  await page.goto(
+    "/#error=access_denied&error_code=otp_expired&error_description=private",
+  );
   await expect(page.getByText(/El enlace venció/)).toBeVisible();
   await expect(page).not.toHaveURL(/private/);
 });
-test("preserves demo, pause, summary, language and local history", async ({
+test("pause, summary, language and local history of a real activity", async ({
   page,
+  context,
 }) => {
   await mocks(page);
-  await page.clock.install();
+  await gps(context);
   await page.goto("/");
   await tab(page, "Actividad");
-  await page.getByRole("checkbox", { name: /demostración/ }).check();
   await page
     .getByRole("button", { name: "Iniciar actividad", exact: true })
     .click();
-  await page.clock.runFor(5000);
   await page.getByRole("button", { name: "Pausar", exact: true }).click();
   await expect(page.getByRole("heading", { name: "En pausa" })).toBeVisible();
   await page.getByRole("button", { name: "Reanudar", exact: true }).click();
-  await page.clock.runFor(45000);
+  await page.getByRole("button", { name: "Finalizar", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Resumen del entrenamiento" }),
   ).toBeVisible();
   await expect(page.getByText("Guardado en tu historial")).toBeVisible();
   await page.reload();
   await tab(page, "Historial");
-  await expect(page.locator(".session-card")).toHaveCount(4);
+  await expect(page.locator(".session-card")).toHaveCount(1);
   await tab(page, "Perfil");
   await page.locator("#language").selectOption("en");
   await expect(
@@ -266,6 +409,66 @@ test("preserves demo, pause, summary, language and local history", async ({
   await expect(
     page.locator(".bottom-nav").getByRole("button", { name: "History" }),
   ).toBeVisible();
+});
+test("a walk keeps the accelerometer steps in the summary and the history", async ({
+  page,
+  context,
+}) => {
+  await mocks(page);
+  await gps(context);
+  // Chromium pide permiso de sensores; en Android ya viene concedido.
+  await context.grantPermissions(["geolocation", "accelerometer", "gyroscope"]);
+  await page.goto("/");
+  await tab(page, "Actividad");
+  await page
+    .getByRole("button", { name: "Iniciar actividad", exact: true })
+    .click();
+  // Acelerómetro sintético: gravedad más un pulso de 2 Hz, como al caminar.
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        const start = performance.now();
+        const timer = setInterval(() => {
+          const t = (performance.now() - start) / 1000;
+          window.dispatchEvent(
+            new DeviceMotionEvent("devicemotion", {
+              accelerationIncludingGravity: {
+                x: 0,
+                y: 0,
+                z: 9.81 + 4 * Math.sin(2 * Math.PI * 2 * t),
+              },
+            }),
+          );
+          if (t > 4) {
+            clearInterval(timer);
+            done();
+          }
+        }, 20);
+      }),
+  );
+  await expect(
+    page.getByText(/Sensor de movimiento: .* Pasos [1-9]/),
+  ).toBeVisible();
+  const live = await page
+    .getByText(/Pasos \d+/)
+    .first()
+    .textContent();
+  const steps = Number(live!.match(/Pasos (\d+)/)![1]);
+  // 4 s a 2 Hz: unos 8 pasos; se admite margen por el arranque del filtro.
+  expect(steps).toBeGreaterThanOrEqual(4);
+  expect(steps).toBeLessThanOrEqual(10);
+  await page.getByRole("button", { name: "Finalizar", exact: true }).click();
+  await expect(page.getByText("Guardado en tu historial")).toBeVisible();
+  await expect(
+    page.locator(".metric").filter({ hasText: "Pasos" }),
+  ).toContainText(String(steps));
+  const saved = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("speedtrack.sessions.v1")!)[0],
+  );
+  expect(saved.steps).toBe(steps);
+  await page.reload();
+  await tab(page, "Historial");
+  await expect(page.locator(".session-card")).toContainText(`Pasos ${steps}`);
 });
 test("GPS captures real samples and recovers an interrupted draft", async ({
   page,
@@ -300,70 +503,117 @@ test("GPS captures real samples and recovers an interrupted draft", async ({
     })
     .click();
   await tab(page, "Historial");
-  await expect(page.locator(".session-card")).toHaveCount(4);
+  await expect(page.locator(".session-card")).toHaveCount(1);
   await page.locator(".session-card").first().click();
   await expect(
     page.getByText("GPS real", { exact: false }).first(),
   ).toBeVisible();
 });
-test("GPS permission interruption, first movement persistence and empty activity feedback", async ({ page }) => {
+test("GPS permission interruption, first movement persistence and empty activity feedback", async ({
+  page,
+}) => {
   await mocks(page);
   await page.addInitScript(() => {
     let callback: PositionCallback;
-    Object.defineProperty(navigator, "geolocation", { value: {
-      watchPosition: (cb: PositionCallback) => { callback = cb; return 1; },
-      clearWatch: () => {},
-    } });
-    Object.assign(window, { emitGps: (meters: number, accuracy: number) => callback({
-      timestamp: Date.now(), coords: { latitude: 0, longitude: meters / 111194.9266,
-        accuracy, speed: 0, altitude: null, altitudeAccuracy: null, heading: null },
-    } as GeolocationPosition) });
+    Object.defineProperty(navigator, "geolocation", {
+      value: {
+        watchPosition: (cb: PositionCallback) => {
+          callback = cb;
+          return 1;
+        },
+        clearWatch: () => {},
+      },
+    });
+    Object.assign(window, {
+      emitGps: (meters: number, accuracy: number) =>
+        callback({
+          timestamp: Date.now(),
+          coords: {
+            latitude: 0,
+            longitude: meters / 111194.9266,
+            accuracy,
+            speed: 0,
+            altitude: null,
+            altitudeAccuracy: null,
+            heading: null,
+          },
+        } as GeolocationPosition),
+    });
   });
   await page.clock.install();
   await page.goto("/");
   await tab(page, "Actividad");
   await page.getByRole("button", { name: "Caminar", exact: true }).click();
-  const start = () => page.getByRole("button", { name: "Iniciar actividad", exact: true }).click();
-  const emit = (meters: number, accuracy = 5) => page.evaluate(({ meters, accuracy }) => {
-    (window as unknown as { emitGps: (m: number, a: number) => void }).emitGps(meters, accuracy);
-  }, { meters, accuracy });
+  const start = () =>
+    page
+      .getByRole("button", { name: "Iniciar actividad", exact: true })
+      .click();
+  const emit = (meters: number, accuracy = 5) =>
+    page.evaluate(
+      ({ meters, accuracy }) => {
+        (
+          window as unknown as { emitGps: (m: number, a: number) => void }
+        ).emitGps(meters, accuracy);
+      },
+      { meters, accuracy },
+    );
   await start();
   await expect(page.getByText("Buscando señal GPS…")).toBeVisible();
   // A permission dialog can hide the document before the watcher is ready.
   await page.evaluate(() => {
-    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
     document.dispatchEvent(new Event("visibilitychange"));
-    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  await expect(page.getByRole("button", { name: "Pausar", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Pausar", exact: true }),
+  ).toBeVisible();
   await emit(0, 100);
   await expect(page.getByText("GPS listo", { exact: true })).toHaveCount(0);
   await emit(0);
   await expect(page.getByText("GPS listo", { exact: true })).toBeVisible();
   await page.clock.runFor(3000);
   await emit(4);
-  const draft = await page.evaluate(() => JSON.parse(localStorage.getItem("speedtrack.draft.local-user")!));
+  const draft = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("speedtrack.draft.local-user")!),
+  );
   expect(draft.distance).toBeGreaterThan(0.0039);
   expect(draft.measurements).toHaveLength(2);
   await page.getByRole("button", { name: "Finalizar", exact: true }).click();
   await page.reload();
   await tab(page, "Historial");
-  await expect(page.locator(".session-card")).toHaveCount(4);
+  await expect(page.locator(".session-card")).toHaveCount(1);
   await tab(page, "Actividad");
   await start();
   await emit(0);
   await page.getByRole("button", { name: "Finalizar", exact: true }).click();
-  await expect(page.getByText(/No se registró movimiento válido/)).toBeVisible();
+  await expect(
+    page.getByText(/No se registró movimiento válido/),
+  ).toBeVisible();
   await tab(page, "Historial");
-  await expect(page.locator(".session-card")).toHaveCount(4);
+  await expect(page.locator(".session-card")).toHaveCount(1);
 });
 
 test("account switch never displays another account history and import is explicit", async ({
   page,
+  context,
 }) => {
   await mocks(page);
+  await gps(context);
   await page.goto("/");
+  // El invitado registra una actividad real: solo él debe verla.
+  await tab(page, "Actividad");
+  await page
+    .getByRole("button", { name: "Iniciar actividad", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Finalizar", exact: true }).click();
   await tab(page, "Perfil");
   await page.getByLabel("Correo electrónico").fill("alice@example.com");
   await page
@@ -382,7 +632,7 @@ test("account switch never displays another account history and import is explic
     .getByRole("button", { name: "Cerrar sesión", exact: true })
     .click();
   await tab(page, "Historial");
-  await expect(page.locator(".session-card")).toHaveCount(3);
+  await expect(page.locator(".session-card")).toHaveCount(1);
   await tab(page, "Perfil");
   await page.getByLabel("Correo electrónico").fill("bob@example.com");
   await page
@@ -406,24 +656,27 @@ test("destination uses the cycling profile and handles unavailable routing", asy
     accuracy: 5,
   });
   let profile = "";
-  await page.route("https://api.heigit.org/openrouteservice/v2/directions/**", (r) => {
-    profile = r.request().url();
-    return r.fulfill({
-      json: {
-        features: [
-          {
-            geometry: {
-              coordinates: [
-                [-77.03, -12.12],
-                [-77.02, -12.12],
-              ],
+  await page.route(
+    "https://api.heigit.org/openrouteservice/v2/directions/**",
+    (r) => {
+      profile = r.request().url();
+      return r.fulfill({
+        json: {
+          features: [
+            {
+              geometry: {
+                coordinates: [
+                  [-77.03, -12.12],
+                  [-77.02, -12.12],
+                ],
+              },
+              properties: { summary: { distance: 1100, duration: 300 } },
             },
-            properties: { summary: { distance: 1100, duration: 300 } },
-          },
-        ],
-      },
-    });
-  });
+          ],
+        },
+      });
+    },
+  );
   await page.goto("/");
   await tab(page, "Actividad");
   await page.getByRole("button", { name: "Ciclismo", exact: true }).click();
@@ -434,8 +687,9 @@ test("destination uses the cycling profile and handles unavailable routing", asy
   expect(profile).toContain("cycling-regular");
   await page.getByRole("button", { name: "Caminar", exact: true }).click();
   await expect(page.getByText("Distancia de la ruta")).toHaveCount(0);
-  await page.route("https://api.heigit.org/openrouteservice/v2/directions/**", (r) =>
-    r.fulfill({ status: 503 }),
+  await page.route(
+    "https://api.heigit.org/openrouteservice/v2/directions/**",
+    (r) => r.fulfill({ status: 503 }),
   );
   await page.getByRole("button", { name: "Calcular ruta" }).click();
   await expect(page.getByText(/Ruta no disponible/)).toBeVisible();
@@ -443,8 +697,10 @@ test("destination uses the cycling profile and handles unavailable routing", asy
 
 test("an authenticated activity survives failed upload and retries without duplication", async ({
   page,
+  context,
 }) => {
   await mocks(page);
+  await gps(context);
   let online = false;
   const saved: unknown[] = [];
   await page.route(
@@ -467,7 +723,6 @@ test("an authenticated activity survives failed upload and retries without dupli
     .click();
   await expect(page.getByText("Hola, alice")).toBeVisible();
   await tab(page, "Actividad");
-  await page.getByRole("checkbox", { name: /demostración/ }).check();
   await page
     .getByRole("button", { name: "Iniciar actividad", exact: true })
     .click();
@@ -508,17 +763,19 @@ test("live GPS rejects noise and gaps, preserves destination and track through p
   page,
 }) => {
   await mocks(page);
-  await page.route("https://api.heigit.org/openrouteservice/v2/directions/**", (r) =>
-    r.fulfill({
-      json: {
-        features: [
-          {
-            geometry: { coordinates: r.request().postDataJSON().coordinates },
-            properties: { summary: { distance: 500, duration: 300 } },
-          },
-        ],
-      },
-    }),
+  await page.route(
+    "https://api.heigit.org/openrouteservice/v2/directions/**",
+    (r) =>
+      r.fulfill({
+        json: {
+          features: [
+            {
+              geometry: { coordinates: r.request().postDataJSON().coordinates },
+              properties: { summary: { distance: 500, duration: 300 } },
+            },
+          ],
+        },
+      }),
   );
   await page.addInitScript(() => {
     let callback: PositionCallback;
@@ -623,12 +880,22 @@ test("live GPS rejects noise and gaps, preserves destination and track through p
       (m: { break_before?: boolean }) => m.break_before,
     ),
   ).toHaveLength(2);
+  // El resumen pinta el gráfico de verdad: superficie, área y curva trazada.
+  const chart = page.locator(".chart");
+  await expect(chart.locator("svg.recharts-surface")).toBeVisible();
+  await expect(chart.locator("path.recharts-area-area")).toHaveCount(1);
+  await expect(chart.locator("path.recharts-area-curve")).toHaveAttribute(
+    "d",
+    /^M[\d.]+,[\d.]+/,
+  );
 });
 
 test("Quechua covers account, navigation, activity and history without Spanish inheritance", async ({
   page,
+  context,
 }) => {
   await mocks(page);
+  await gps(context);
   await page.goto("/");
   await tab(page, "Perfil");
   await page.locator("#language").selectOption("qu");
@@ -646,9 +913,6 @@ test("Quechua covers account, navigation, activity and history without Spanish i
     page.getByText("Chayanata maskay", { exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("checkbox", { name: "Qhawarichiy purisqata llamk’achiy" })
-    .check();
-  await page
     .getByRole("button", { name: "Kuyuyta qallariy", exact: true })
     .click();
   await expect(page.locator(".live-summary")).toContainText(
@@ -663,7 +927,7 @@ test("Quechua covers account, navigation, activity and history without Spanish i
     page.getByRole("heading", { name: "Kuyuy pisiyachisqa" }),
   ).toBeVisible();
   await tab(page, "Purisqakuna");
-  await expect(page.locator(".session-card")).toHaveCount(4);
+  await expect(page.locator(".session-card")).toHaveCount(1);
   await page.reload();
   await expect(page.locator(".bottom-nav")).toContainText("Purisqakuna");
 });
@@ -676,26 +940,31 @@ for (const [mode, label] of [
 ] as const) {
   test(`active ${mode} prioritizes its metrics and keeps mobile controls reachable`, async ({
     page,
+    context,
   }) => {
     await mocks(page);
-    await page.route("https://api.heigit.org/openrouteservice/v2/directions/**", (r) =>
-      r.fulfill({
-        json: {
-          features: [
-            {
-              geometry: { coordinates: r.request().postDataJSON().coordinates },
-              properties: { summary: { distance: 500, duration: 300 } },
-            },
-          ],
-        },
-      }),
+    await gps(context);
+    await page.route(
+      "https://api.heigit.org/openrouteservice/v2/directions/**",
+      (r) =>
+        r.fulfill({
+          json: {
+            features: [
+              {
+                geometry: {
+                  coordinates: r.request().postDataJSON().coordinates,
+                },
+                properties: { summary: { distance: 500, duration: 300 } },
+              },
+            ],
+          },
+        }),
     );
     await page.clock.install();
     await page.goto("/");
     await tab(page, mode === "vehicle" ? "Vehículo" : "Actividad");
     if (mode !== "vehicle")
       await page.getByRole("button", { name: label, exact: true }).click();
-    await page.getByRole("checkbox", { name: /demostración/ }).check();
     await page.locator(".setup-card .primary-button").click();
     await page.clock.runFor(2000);
     const live = page.locator(`.live-activity.mode-${mode}`);
@@ -758,3 +1027,34 @@ for (const [mode, label] of [
     await finish.click();
   });
 }
+
+test("academic simulation is explicit, survives reload and is excluded from statistics", async ({
+  page,
+}) => {
+  await mocks(page);
+  await page.clock.install();
+  await page.goto("/");
+  await tab(page, "Actividad");
+  await page
+    .getByRole("checkbox", { name: "Usar recorrido de demostraci\u00f3n" })
+    .check();
+  await page
+    .getByRole("button", { name: "Iniciar actividad", exact: true })
+    .click();
+  await page.clock.runFor(5000);
+  await page.getByRole("button", { name: "Finalizar", exact: true }).click();
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("speedtrack.sessions.v1")!),
+  );
+  expect(saved).toHaveLength(1);
+  expect(saved[0].demo).toBe(true);
+  expect(saved[0].distance).toBeGreaterThan(0);
+  await page.reload();
+  await tab(page, "Historial");
+  await expect(page.locator(".session-card")).toHaveCount(1);
+  await expect(page.locator(".session-card")).toContainText(
+    "Demostraci\u00f3n",
+  );
+  await tab(page, "Inicio");
+  await expect(page.locator(".hero-number")).toContainText("0");
+});

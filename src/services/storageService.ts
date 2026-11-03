@@ -1,6 +1,5 @@
 import type { Session, Settings, User } from "../types";
 import { validSession } from "./activityRepository";
-import { seedSessions } from "../data/seed";
 export const defaultSettings: Settings = {
   id: "local-settings",
   user_id: "local-user",
@@ -30,8 +29,7 @@ export const storageService = {
         ? "speedtrack.sessions.v1"
         : `speedtrack.sessions.${owner}`,
     );
-    if (!Array.isArray(data))
-      return owner === "local-user" ? seedSessions() : [];
+    if (!Array.isArray(data)) return [];
     const valid = data.filter(validSession);
     return owner === "local-user"
       ? valid
@@ -65,7 +63,9 @@ export const storageService = {
       user_id: owner,
       units: "metric",
       voice_fallback:
-        s.voice_fallback === "es" || s.voice_fallback === "en" || s.voice_fallback === "off"
+        s.voice_fallback === "es" ||
+        s.voice_fallback === "en" ||
+        s.voice_fallback === "off"
           ? s.voice_fallback
           : "es",
       progress_alerts: s.progress_alerts === true,

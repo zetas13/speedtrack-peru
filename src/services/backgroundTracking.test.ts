@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { newSession } from "../data/demo";
+import { newSession } from "../utils/session";
 import {
   BackgroundTracker,
   type JournalApi,
@@ -70,7 +70,7 @@ function fixture() {
     gps,
     permission,
   );
-  const session = newSession("walk", false, 50, null);
+  const session = newSession("walk", 50, null);
   return { tracker, api, gps, permission, session, rows, calls, update, error };
 }
 it("starts one native watcher, serializes duplicate starts, and removes it before saving acknowledgement", async () => {

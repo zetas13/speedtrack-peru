@@ -87,3 +87,33 @@ it("permission readiness precedes tracking and a transient error does not stop s
   callback({ timestamp: 2000, coords: {} });
   expect(point).toHaveBeenCalledOnce();
 });
+it("approximate-only permission warns but keeps watching", async () => {
+  api.requestPermissions.mockResolvedValue({
+    location: "prompt",
+    coarseLocation: "granted",
+  });
+  const error = vi.fn();
+  watchGps(vi.fn(), error);
+  await flush();
+  expect(error).toHaveBeenCalledOnce();
+  expect(api.watchPosition).toHaveBeenCalledOnce();
+});
+
+it("a watcher resolving after stop is removed and cannot deliver late fixes", async () => {
+  let resolveWatch!: (id: string) => void;
+  api.watchPosition.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveWatch = resolve;
+      }),
+  );
+  const point = vi.fn();
+  const stop = watchGps(point, vi.fn());
+  await flush();
+  stop();
+  resolveWatch("late-watch");
+  await flush();
+  expect(api.clearWatch).toHaveBeenCalledExactlyOnceWith({ id: "late-watch" });
+  api.watchPosition.mock.calls[0][1]({ timestamp: 1000, coords: {} });
+  expect(point).not.toHaveBeenCalled();
+});

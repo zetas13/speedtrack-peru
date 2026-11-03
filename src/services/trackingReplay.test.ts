@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { newSession } from "../data/demo";
+import { newSession } from "../utils/session";
 import { TrackingReplay, type TrackingRow } from "./trackingReplay";
 import { recentSpeed, userEta } from "../utils/navigation";
 
@@ -9,6 +9,7 @@ const point = (
   meters: number,
   elapsed = seconds,
   accuracy = 5,
+  speed: number | null = null,
 ): TrackingRow => ({
   seq,
   kind: "point",
@@ -19,36 +20,39 @@ const point = (
     latitude: 0,
     longitude: meters / 111194.9266,
     accuracy,
-    speed: null,
+    speed,
   },
 });
 describe("durable GPS replay", () => {
-  it("replays a locked-screen walk hours later exactly like live foreground GPS, with native time and ETA", () => {
-    const session = newSession("walk", false, 50, null);
-    const rows = Array.from({ length: 121 }, (_, i) =>
-      point(i + 1, i, i * 1.4),
-    );
-    const foreground = new TrackingReplay(session);
-    for (const row of rows) foreground.apply([row]);
-    const background = new TrackingReplay(session);
-    background.apply(rows);
-    background.time(120);
-    expect(background.session.distance).toBeCloseTo(
-      foreground.session.distance,
-      8,
-    );
-    expect(background.session.distance).toBeGreaterThan(0.16);
-    expect(background.session.measurements).toEqual(
-      foreground.session.measurements,
-    );
-    const speed = recentSpeed(background.session.measurements, 120);
-    expect(speed).toBeGreaterThan(3);
-    expect(userEta(1, speed)).toBeGreaterThan(0);
-    background.apply(rows); // repeated delivery, visibility events, retries
-    expect(background.session.measurements).toHaveLength(121);
-  });
+  it.each([null, 0])(
+    "replays locked-screen GPS with device speed %s exactly like foreground, with native time and ETA",
+    (deviceSpeed) => {
+      const session = newSession("walk", 50, null);
+      const rows = Array.from({ length: 121 }, (_, i) =>
+        point(i + 1, i, i * 1.4, i, 5, deviceSpeed),
+      );
+      const foreground = new TrackingReplay(session);
+      for (const row of rows) foreground.apply([row]);
+      const background = new TrackingReplay(session);
+      background.apply(rows);
+      background.time(120);
+      expect(background.session.distance).toBeCloseTo(
+        foreground.session.distance,
+        8,
+      );
+      expect(background.session.distance).toBeGreaterThan(0.16);
+      expect(background.session.measurements).toEqual(
+        foreground.session.measurements,
+      );
+      const speed = recentSpeed(background.session.measurements, 120);
+      expect(speed).toBeGreaterThan(3);
+      expect(userEta(1, speed)).toBeGreaterThan(0);
+      background.apply(rows); // repeated delivery, visibility events, retries
+      expect(background.session.measurements).toHaveLength(121);
+    },
+  );
   it("pause/resume resets the anchor and excludes pause time without bridging movement", () => {
-    const replay = new TrackingReplay(newSession("walk", false, 50, null));
+    const replay = new TrackingReplay(newSession("walk", 50, null));
     replay.apply([
       point(1, 0, 0),
       point(2, 3, 4),
@@ -61,7 +65,7 @@ describe("durable GPS replay", () => {
     expect(replay.session.measurements[2].break_before).toBe(true);
   });
   it("stationary jitter, poor fixes and signal loss do not invent distance in a buffer", () => {
-    const replay = new TrackingReplay(newSession("walk", false, 50, null));
+    const replay = new TrackingReplay(newSession("walk", 50, null));
     replay.apply(
       Array.from({ length: 61 }, (_, i) => point(i + 1, i, Math.sin(i))),
     );
@@ -75,7 +79,7 @@ describe("durable GPS replay", () => {
     expect(replay.filter.diagnostics.discarded).toBe(1);
   });
   it("rebuilds after WebView recreation with stable sample IDs and a cursor across pages", () => {
-    const session = newSession("walk", false, 50, null);
+    const session = newSession("walk", 50, null);
     const rows = Array.from({ length: 650 }, (_, i) => point(i + 1, i, i));
     const first = new TrackingReplay(session);
     first.apply(rows.slice(0, 200));
