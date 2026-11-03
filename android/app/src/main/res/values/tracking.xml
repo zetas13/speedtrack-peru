@@ -1,0 +1,4 @@
+<resources>
+    <string name="capacitor_background_geolocation_notification_icon" translatable="false">drawable/ic_tracking</string>
+    <string name="capacitor_background_geolocation_notification_channel_name">SpeedTrack GPS</string>
+</resources>

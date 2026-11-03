@@ -110,10 +110,21 @@ function Workspace({ owner }: { owner: string }) {
             </div>
           )}
           {settingsPending && <p className="muted">{t("settingsPending")}</p>}
+          {tracker.emptyActivity && (
+            <p className="notice" role="status">
+              {t("emptyActivity")}
+            </p>
+          )}
+          {tracker.backgroundError && (
+            <p className="error-message" role="alert">
+              {t("backgroundError")}
+            </p>
+          )}
           {tracker.draft && !tracker.session && (
             <button
               className="secondary-button full"
               onClick={tracker.recoverDraft}
+              disabled={tracker.trackingBusy}
             >
               {t("recoverDraft")}
             </button>
@@ -125,7 +136,7 @@ function Workspace({ owner }: { owner: string }) {
           )}
           {recovery ? (
             <AccountPanel
-              active={!!tracker.session}
+              active={!!tracker.session || tracker.trackingBusy}
               importLocal={importLocal}
             />
           ) : shown ? (
@@ -138,13 +149,20 @@ function Workspace({ owner }: { owner: string }) {
             <HomePage sessions={sessions} navigate={navigate} open={open} />
           ) : tab === "activity" || tab === "vehicle" ? (
             <TrackerPage
-              blockedStart={!!tracker.draft}
+              blockedStart={
+                !!tracker.draft ||
+                tracker.trackingBusy ||
+                tracker.trackingUnavailable
+              }
+              trackingBusy={tracker.trackingBusy}
+              backgroundActive={tracker.backgroundActive}
               vehicle={tab === "vehicle"}
               session={tracker.session}
               paused={tracker.paused}
               gpsError={tracker.gpsError}
               gpsAccuracy={tracker.gpsAccuracy}
               waitingFix={tracker.waitingFix}
+              motion={tracker.motion}
               settings={settings}
               setLimit={(v) => updateSettings({ ...settings, speed_limit: v })}
               updateNavigation={tracker.updateNavigation}
@@ -157,7 +175,7 @@ function Workspace({ owner }: { owner: string }) {
           ) : (
             <>
               <AccountPanel
-                active={!!tracker.session}
+                active={!!tracker.session || tracker.trackingBusy}
                 importLocal={importLocal}
               />
               <ProfilePage settings={settings} update={updateSettings} />

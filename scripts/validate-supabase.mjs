@@ -7,7 +7,10 @@ import { parseEnv } from "node:util";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { chromium, expect } from "@playwright/test";
-import { acceptAuthCallback, nativeAuthRedirect } from "../src/services/authCallback.ts";
+import {
+  acceptAuthCallback,
+  nativeAuthRedirect,
+} from "../src/services/authCallback.ts";
 
 assert(
   process.argv.includes("--linked"),
@@ -16,6 +19,14 @@ assert(
 const env = parseEnv(readFileSync(".env", "utf8"));
 const ref = readFileSync("supabase/.temp/project-ref", "utf8").trim();
 assert(/^[a-z]{20}$/.test(ref), "Invalid linked project ref");
+// This script requests the service_role key and creates and deletes users, so
+// it must never run against the project that serves real accounts. The ref of
+// the intended test project is named out of band and has to match the link.
+assert.equal(
+  ref,
+  process.env.SPEEDTRACK_TEST_PROJECT_REF,
+  "Set SPEEDTRACK_TEST_PROJECT_REF to the ref of a disposable test project; it must equal the linked project",
+);
 const url = env.VITE_SUPABASE_URL;
 assert.equal(
   url,
@@ -405,10 +416,21 @@ try {
     await page.goto(process.env.SPEEDTRACK_TEST_URL);
     await login(users[0]);
     await tab("Actividad");
-    await page.getByRole("checkbox", { name: /demostración/ }).check();
+    // Browser sensor emulation exercises the real watchPosition/filter path;
+    // only temporary accounts receive these synthetic, non-demo GPS samples.
+    await page.context().grantPermissions(["geolocation"]);
+    await page.context().setGeolocation({ latitude: -12.12, longitude: -77.03, accuracy: 5 });
+    await page.getByRole("button", { name: "Caminar", exact: true }).click();
     await page
       .getByRole("button", { name: "Iniciar actividad", exact: true })
       .click();
+    await expect(page.getByText("GPS listo", { exact: true })).toBeVisible();
+    await page.waitForTimeout(3000);
+    await page.context().setGeolocation({ latitude: -12.11996, longitude: -77.03, accuracy: 5 });
+    await expect.poll(async () => page.evaluate((owner) => {
+      const draft = JSON.parse(globalThis.localStorage.getItem(`speedtrack.draft.${owner}`) || "null");
+      return draft?.distance ?? 0;
+    }, users[0].id)).toBeGreaterThan(0.004);
     await page.getByRole("button", { name: "Finalizar", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Historial sincronizado", exact: true }),
@@ -420,6 +442,11 @@ try {
             .length,
       )
       .toBe(2);
+    const gpsRows = checked(await users[0].api.from("sessions").select("id,distance").eq("payload->>demo", "false"), "GPS session upload");
+    assert.equal(gpsRows.length, 1);
+    assert(gpsRows[0].distance > 0.004);
+    const gpsSamples = checked(await users[0].api.from("measurements").select("id").eq("session_id", gpsRows[0].id), "GPS sample upload");
+    assert(gpsSamples.length >= 2);
     await page.reload();
     await tab("Historial");
     await expect(page.locator(".session-card")).toHaveCount(2);
@@ -451,45 +478,89 @@ try {
     await tab("Historial");
     await expect(page.locator(".session-card")).toHaveCount(1);
     console.log(
-      "PASS: real Chromium login -> save -> logout -> clear cache -> login -> cloud recovery -> account B isolation",
+      "PASS: real Chromium login -> emulated GPS movement -> session and measurements in Supabase -> logout -> clear cache -> login -> cloud recovery -> account B isolation",
     );
     // Exercise real email verification redirects without claiming SMTP delivery.
     const account = users[0];
-    const recoveryLink = checked(await admin.auth.admin.generateLink({
-      type: "recovery", email: account.email,
-      options: { redirectTo: process.env.SPEEDTRACK_TEST_URL },
-    }), "Generate real recovery link");
+    const recoveryLink = checked(
+      await admin.auth.admin.generateLink({
+        type: "recovery",
+        email: account.email,
+        options: { redirectTo: process.env.SPEEDTRACK_TEST_URL },
+      }),
+      "Generate real recovery link",
+    );
     await page.evaluate(() => globalThis.localStorage.clear());
     await page.goto(recoveryLink.properties.action_link);
-    await expect(page.getByRole("button", { name: "Guardar nueva contraseña", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Guardar nueva contraseña",
+        exact: true,
+      }),
+    ).toBeVisible();
     await page.reload();
     const newPassword = `${randomUUID()}Bb8!`;
     await page.getByLabel("Contraseña (mínimo 8 caracteres)").fill(newPassword);
-    await page.getByRole("button", { name: "Guardar nueva contraseña", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Guardar nueva contraseña", exact: true })
+      .click();
     await expect(page.getByText(/Contraseña actualizada/)).toBeVisible();
-    assert((await client().auth.signInWithPassword({ email: account.email, password: account.password })).error, "Previous password must fail after recovery");
+    assert(
+      (
+        await client().auth.signInWithPassword({
+          email: account.email,
+          password: account.password,
+        })
+      ).error,
+      "Previous password must fail after recovery",
+    );
     account.password = newPassword;
     await login(account);
-    console.log("PASS: real recovery verification link -> browser reload -> new password -> old password rejected -> login; email transport not tested");
+    console.log(
+      "PASS: real recovery verification link -> browser reload -> new password -> old password rejected -> login; email transport not tested",
+    );
 
-    const nativeLink = checked(await admin.auth.admin.generateLink({
-      type: "recovery", email: account.email,
-      options: { redirectTo: nativeAuthRedirect },
-    }), "Generate native recovery link");
-    const verification = await fetch(nativeLink.properties.action_link, { redirect: "manual" });
+    const nativeLink = checked(
+      await admin.auth.admin.generateLink({
+        type: "recovery",
+        email: account.email,
+        options: { redirectTo: nativeAuthRedirect },
+      }),
+      "Generate native recovery link",
+    );
+    const verification = await fetch(nativeLink.properties.action_link, {
+      redirect: "manual",
+    });
     assert.equal(verification.status, 303);
     const callback = verification.headers.get("location");
-    assert(callback?.startsWith(nativeAuthRedirect), "Supabase must allow the exact native callback");
+    assert(
+      callback?.startsWith(nativeAuthRedirect),
+      "Supabase must allow the exact native callback",
+    );
     const nativeClient = client();
     clients.push(nativeClient);
     const accepted = await acceptAuthCallback(callback, nativeClient);
     assert.equal(accepted?.recovery, true);
     assert.equal(accepted?.userId, account.id);
     const nativePassword = `${randomUUID()}Cc7!`;
-    checked(await nativeClient.auth.updateUser({ password: nativePassword }), "Native callback password update");
-    checked(await nativeClient.auth.signOut({ scope: "local" }), "Native logout");
-    checked(await nativeClient.auth.signInWithPassword({ email: account.email, password: nativePassword }), "Native new password login");
-    console.log("PASS: real native redirect and callback adapter -> password update -> login (adapter test, not a physical Android device)");
+    checked(
+      await nativeClient.auth.updateUser({ password: nativePassword }),
+      "Native callback password update",
+    );
+    checked(
+      await nativeClient.auth.signOut({ scope: "local" }),
+      "Native logout",
+    );
+    checked(
+      await nativeClient.auth.signInWithPassword({
+        email: account.email,
+        password: nativePassword,
+      }),
+      "Native new password login",
+    );
+    console.log(
+      "PASS: real native redirect and callback adapter -> password update -> login (adapter test, not a physical Android device)",
+    );
   }
 } finally {
   if (browser) await browser.close();

@@ -1,0 +1,44 @@
+diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
+index a92fcf9..c19a6e8 100644
+--- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
++++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
+@@ -156,6 +156,12 @@ public class BackgroundGeolocation extends Plugin {
+ 
+             backgroundNotification = builder.build();
+         }
++        // SpeedTrack: durable ownership before acquisition, even if the WebView
++        // reloads between addWatcher and its asynchronous JS continuation.
++        Intent registration = new Intent(BackgroundGeolocationService.ACTION_BROADCAST);
++        registration.putExtra("watcherAdded", true);
++        registration.putExtra("id", call.getCallbackId());
++        LocalBroadcastManager.getInstance(getContext()).sendBroadcastSync(registration);
+         service.addWatcher(
+                 call.getCallbackId(),
+                 backgroundNotification,
+diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
+index 2c5de94..0762ce4 100644
+--- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
++++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
+@@ -100,13 +100,15 @@ public class BackgroundGeolocationService extends Service {
+             LocationCallback callback = new LocationCallback(){
+                 @Override
+                 public void onLocationResult(LocationResult locationResult) {
+-                    Location location = locationResult.getLastLocation();
+-                    Intent intent = new Intent(ACTION_BROADCAST);
+-                    intent.putExtra("location", location);
+-                    intent.putExtra("id", id);
+-                    LocalBroadcastManager.getInstance(
+-                            getApplicationContext()
+-                    ).sendBroadcast(intent);
++                    // SpeedTrack: retain every native fix, including OS batches.
++                    for (Location location : locationResult.getLocations()) {
++                        Intent intent = new Intent(ACTION_BROADCAST);
++                        intent.putExtra("location", location);
++                        intent.putExtra("id", id);
++                        LocalBroadcastManager.getInstance(
++                                getApplicationContext()
++                        ).sendBroadcastSync(intent);
++                    }
+                 }
+                 @Override
+                 public void onLocationAvailability(LocationAvailability availability) {

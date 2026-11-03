@@ -1,6 +1,6 @@
 # SpeedTrack Perú · V2
 
-Evolución del proyecto original de Física I: React + Vite + TypeScript, estilo oscuro/verde, actividad deportiva, movilidad y cinemática. Conserva la navegación, las demos, los idiomas, la voz y las pantallas de la V1. Se desarrolla exclusivamente en `feature/speedtrack-v2`; `main` permanece estable.
+Evolución del proyecto original de Física I: React + Vite + TypeScript, estilo oscuro/verde, actividad deportiva, movilidad y cinemática. Conserva la navegación, los idiomas, la voz y las pantallas de la V1. V2 fue integrada en `main` mediante el merge `8001ba6`; esta revisión continúa en `integration/pr2-final`.
 
 ## Ejecutar
 
@@ -11,8 +11,8 @@ Requisitos: Node **22.12+** (probado con Node 24), npm y Git.
 ```sh
 git clone https://github.com/zetas13/speedtrack-peru.git
 cd speedtrack-peru
-git switch feature/speedtrack-v2
-npm install
+git switch integration/pr2-final
+npm ci
 ```
 
 Copiar `.env.example` a `.env` (`Copy-Item .env.example .env` en PowerShell; `cp .env.example .env` en macOS/Linux). El modo local funciona con las variables vacías.
@@ -32,7 +32,7 @@ En Windows, si PowerShell bloquea `npm.ps1`, usar `npm.cmd` y `npx.cmd`. No es n
 - Caminar y correr: ritmo, duración activa, distancia, velocidad, splits interpolados por kilómetro y gráfico de ritmo.
 - Bicicleta: velocidad actual/promedio/máxima, recorrido y ETA según velocidad reciente.
 - Vehículo: velocidad, aceleración escalar, frenadas, eventos, límite configurable y navegación. El límite es una referencia del usuario, no información vial oficial.
-- Simulación de los cuatro modos: 45 segundos reales; deporte representa 30 minutos. Las demos se identifican y se excluyen de las estadísticas reales.
+- Simulacion academica opcional de los cuatro modos: 45 segundos reales; deporte representa 30 minutos. Se etiqueta, persiste localmente y queda fuera de estadisticas, importacion y Supabase. El historial nuevo comienza vacio.
 - Mapa mundial MapLibre + OpenFreeMap/OSM: calles, punto X, destino Y, seguimiento, centrar, ruta realizada y ruta prevista.
 - Registro, login, logout, recuperación de contraseña, sesión persistente, nombre de perfil y preferencias mediante Supabase.
 - Historial separado por usuario, estadísticas totales, últimos siete días y mes actual, con actividades por tipo.
@@ -61,11 +61,11 @@ Las tablas son `profiles`, `sessions`, `measurements`, `splits`, `events` y `use
 
 RLS compara `auth.uid()` con el propietario en todas las tablas. Las claves foráneas compuestas impiden vincular mediciones a sesiones de otro usuario. `save_activity` usa **security invoker** y una transacción para guardar sesión e hijos atómicamente; un reintento con el mismo ID no duplica datos. El trigger de registro crea el perfil. No se almacenan contraseñas manualmente.
 
-La recuperación envía un enlace; al abrirlo en la web, la aplicación permite establecer la nueva contraseña. Para Android, configurar `VITE_AUTH_REDIRECT_URL` con la web HTTPS: el correo se confirma o recupera en el navegador y luego se inicia sesión en la app. Esta versión no registra enlaces profundos de recuperación nativos.
+La recuperación envía un enlace; al abrirlo en la web, la aplicación permite establecer la nueva contraseña. Android registra el enlace profundo `pe.speedtrack.app://auth/callback`; debe autorizarse en las Redirect URLs de Supabase y probarse en un dispositivo. La configuración web `VITE_AUTH_REDIRECT_URL` no sustituye esa dirección nativa. El flujo nativo no se ha validado en un dispositivo en esta revisión.
 
 ### Local, caché y sincronización
 
-- Invitado: conserva `speedtrack.sessions.v1` y sus ejemplos existentes.
+- Invitado: conserva `speedtrack.sessions.v1` (sin ejemplos precargados; simulaciones etiquetadas).
 - Autenticado: caché, borrador, preferencias y cola de subida usan claves con el ID del propietario. Un cambio de cuenta desmonta el espacio de trabajo anterior.
 - Primero se muestra la caché; después se sincroniza con Supabase. Hay reintentos al recuperar conexión, cada minuto y con el indicador de sincronización.
 - El botón de Perfil **Importar mis recorridos locales** importa solo actividades reales y completas. Es explícito para evitar atribuir a una cuenta datos de otra persona que haya usado el dispositivo. Se conservan los originales y no se importan demos.
@@ -77,7 +77,7 @@ La recuperación envía un enlace; al abrirlo en la web, la aplicación permite 
 
 ## GPS y Física
 
-Se pide ubicación al iniciar un recorrido real o al pulsar centrar mapa; una demo no requiere permiso. En web hace falta **HTTPS o localhost**. La IP HTTP del PC abierta desde otro teléfono no suele ser un contexto seguro.
+Se pide ubicación al iniciar un recorrido real o al pulsar centrar mapa. En web hace falta **HTTPS o localhost**. La IP HTTP del PC abierta desde otro teléfono no suele ser un contexto seguro.
 
 Unidades internas: kilómetros, segundos activos, km/h y m/s².
 
@@ -98,6 +98,10 @@ La distancia restante se calcula proyectando X sobre la polilínea de la ruta y 
 
 La app prioriza **primer plano**: al ocultarse, pausa y conserva el borrador; al volver se debe reanudar. No solicita ubicación permanente en segundo plano. La suspensión del sistema, túneles, edificios y GPS impreciso pueden dejar tramos sin registrar. La rapidez es escalar; no se confunde con velocidad vectorial. Ninguna medición es certificada.
 
+## Sensor de movimiento
+
+Complementa al GPS con el acelerómetro del teléfono (`DeviceMotionEvent`, sin permisos en Android): indica si hay movimiento y, al caminar o correr, cuenta pasos y muestra una distancia **estimada** (0,72 m por paso al caminar, 1,0 m al correr). Funciona bajo techo. Si el sensor detecta movimiento pero el GPS no confirma posición, avisa en pantalla. No suma a la distancia oficial: en bicicleta y vehículo solo indica movimiento, porque la aceleración no permite calcular una distancia fiable. Los umbrales son heurísticos y están sin calibrar con recorridos reales; en iOS requiere permiso de movimiento. Solo funciona en primer plano y con la pantalla encendida. Código: `src/services/motionService.ts`.
+
 ## Mapas, destinos y rutas
 
 La cartografía usa `https://tiles.openfreemap.org/styles/liberty`, con atribución visible a OpenFreeMap, OpenMapTiles y OpenStreetMap. Se carga de forma diferida para no descargar MapLibre en Inicio.
@@ -106,10 +110,13 @@ El mapa y el registro no necesitan clave de rutas. Para calcular caminos y habil
 
 ```dotenv
 VITE_ROUTING_URL=https://api.heigit.org/openrouteservice
+VITE_GEOCODING_URL=https://api.heigit.org/pelias/v1
 VITE_ROUTING_API_KEY=TU_CLAVE_PUBLICA_RESTRINGIDA
 ```
 
 `routingService` abstrae el proveedor. Caminar/correr usan `foot-walking`, bicicleta `cycling-regular` y vehículo `driving-car`. Seleccionar destino en el mapa, centrar la ubicación y pulsar **Calcular ruta**. Al cambiar de modo no se reutiliza la ruta de otro perfil.
+
+Las URL de rutas y búsqueda son independientes: HeiGIT sirve la búsqueda en Pelias. Para un proveedor alternativo configurar ambas bases por separado. El contrato de migración está documentado por [HeiGIT](https://ask.openrouteservice.org/t/deprecating-api-openrouteservice-org-in-favour-of-api-heigit-org/7912); sin una clave válida no se ha verificado una respuesta real de búsqueda o ruta en esta revisión.
 
 La clave en la web es visible: aplicar las restricciones y cuotas del proveedor o usar un proxy propio compatible. La aplicación no dibuja una línea recta haciéndola pasar por una ruta si el proveedor no está configurado o falla. Búsqueda, rutas y teselas necesitan conexión. No hay descarga de mapas offline ni garantía de disponibilidad de servicios públicos.
 
@@ -173,7 +180,7 @@ Geolocalización tiene adaptador nativo `@capacitor/geolocation` y fallback web.
 
 ## Vercel
 
-Importar el repositorio y seleccionar **`feature/speedtrack-v2` como rama de preview**. Instalar con `npm ci`, compilar con `npm run build`, salida `dist`. Añadir las variables públicas en el entorno de Preview y registrar esa URL en Supabase Auth. `vercel.json` contiene salida, rewrite SPA y cabeceras básicas. No es necesario cambiar ni fusionar `main` para revisar V2. El despliegue no se realizó automáticamente.
+Importar el repositorio y seleccionar la rama de trabajo como preview. Instalar con `npm ci`, compilar con `npm run build`, salida `dist`. Añadir las variables públicas en el entorno de Preview y registrar esa URL en Supabase Auth. `vercel.json` contiene salida, rewrite SPA y cabeceras básicas. No se realizó ni verificó un despliegue en esta revisión.
 
 ## Pruebas y límites de validación
 
@@ -188,21 +195,25 @@ npm audit
 
 - Vitest verifica física, filtros, conversiones, ritmo, ETA, perfiles de rutas, validación, cachés aisladas, cola y reintentos.
 - PGlite ejecuta la migración SQL real con roles simulados `authenticated`/`anon` y dos identidades; comprueba RLS, FK y RPC idempotente. No sustituye comprobar el proyecto Supabase desplegado y sus ajustes Auth/SMTP.
-- Playwright prueba demo, pausa, guardado, idiomas, GPS emulado y recuperación, cambio de cuentas y routing. Supabase/routing se simulan en estas pruebas; no prueban envío de correos reales ni facturación/credenciales de APIs.
+- Playwright prueba pausa, guardado, idiomas, GPS emulado y recuperación, cambio de cuentas y routing. Supabase/routing se simulan en estas pruebas; no prueban envío de correos reales ni facturación/credenciales de APIs.
 - La cartografía pública también se revisó en Chromium con coordenadas emuladas, sin errores JavaScript.
 - El build puede advertir del tamaño del módulo MapLibre, que se descarga únicamente al abrir un mapa.
-- Unidades métricas en esta versión; no hay avatar subido, giro a giro, mapas descargables, comandos de voz ni seguimiento continuo con pantalla apagada. Son extensiones futuras, no funciones anunciadas como disponibles.
+- Unidades métricas en esta versión; no hay avatar subido, giro a giro, mapas descargables, comandos de voz. Son extensiones futuras, no funciones anunciadas como disponibles.
+
+En la revisión del 2026-11-01, con Node 22.23.4, pasaron typecheck, lint, build y 71 pruebas Vitest; Chromium pasó 14 pruebas E2E con proveedores simulados. `npm audit` reportó 14 vulnerabilidades moderadas en dependencias de desarrollo (`minimatch`/`glob` y sus dependientes); `npm audit --omit=dev` reportó cero. No se aplicó la actualización automática que propone cambios incompatibles. El build advierte sobre chunks mayores de 500 kB.
+
+El APK debug se compiló con Java 21 y SDK 36, y su firma se verificó con `apksigner`. En este equipo no había `.env`, proyecto Supabase enlazado ni dispositivo Android conectado: la compilación funciona en modo local y no acredita correo, backend real, instalación, GPS, voz o enlaces profundos. La validación real descrita en `docs/supabase-validation.md` corresponde a una sesión anterior. Para volver a verificar con servicios reales, usar credenciales y usuarios de prueba autorizados; no ejecutar migraciones remotas sin revisar el historial y contar con autorización.
 
 ## Arquitectura y colaboración
 
 ### Validación del proyecto real
 
-Resultados y límites de esta conexión: [validación Supabase](docs/supabase-validation.md). El APK actual incluye la configuración pública del proyecto real y conserva caché, cola y fallback local.
+Resultados y límites de una validación anterior: [validación Supabase](docs/supabase-validation.md). La configuración incluida en cada APK depende de las variables presentes al compilar; sin ellas funciona en modo local.
 
-Con la CLI autenticada, el proyecto enlazado y `.env` apuntando al mismo proyecto:
+Con la CLI autenticada, el proyecto enlazado y `.env` apuntando al mismo proyecto. La prueba pide la clave `service_role` y crea y elimina usuarios, así que exige declarar aparte el proyecto desechable contra el que puede correr: si `SPEEDTRACK_TEST_PROJECT_REF` no coincide con el proyecto enlazado, aborta antes de tocar nada. Nunca usar aquí el proyecto que atiende cuentas reales.
 
 ```sh
-node scripts/validate-supabase.mjs --linked
+SPEEDTRACK_TEST_PROJECT_REF=<ref-del-proyecto-de-pruebas> node scripts/validate-supabase.mjs --linked
 ```
 
 Esta prueba crea dos usuarios temporales y elimina únicamente esos usuarios y sus datos al finalizar. Usa la clave administrativa de la CLI solo en memoria para preparar/confirmar/limpiar las cuentas; comprueba RLS usando la clave pública y los JWT de cada usuario. Verifica las seis tablas, aislamiento bidireccional, anon, escrituras ajenas, claves foráneas, rollback, reintentos, refresh, logout/login y recuperación.
@@ -211,6 +222,7 @@ Para incluir Chromium con el backend real, ejecutar primero `npm run build` y `n
 
 ```powershell
 $env:SPEEDTRACK_TEST_URL='http://127.0.0.1:4174'
+$env:SPEEDTRACK_TEST_PROJECT_REF='<ref-del-proyecto-de-pruebas>'
 node scripts/validate-supabase.mjs --linked
 ```
 
@@ -218,6 +230,37 @@ El navegador guarda una actividad y la recupera después de logout, borrado de c
 
 `pages/` y `components/` conservan las pantallas originales. `useSession` administra el ciclo de tracking y los avisos; `GpsFilter` filtra las muestras; `useActivityStore` coordina caché/outbox/nube; `useSettings` sincroniza preferencias; `useAuth` usa Supabase Auth. Servicios independientes aíslan GPS, routing, tráfico, voz, borradores y almacenamiento. Diccionarios tipados viven en `src/i18n`.
 
-No subir `.env`, `node_modules`, `dist`, APK, cachés, `local.properties` ni claves. Sí versionar migraciones, lockfile, proyecto Android y su wrapper. Ejecutar verificaciones antes de cada bloque estable y hacer push exclusivamente a `origin/feature/speedtrack-v2`.
+No subir `.env`, `node_modules`, `dist`, APK, cachés, `local.properties` ni claves. Sí versionar migraciones, lockfile, proyecto Android y su wrapper. Comprobar las ramas del equipo antes de integrar cambios y publicar esta revisión únicamente en `origin/integration/pr2-final`.
 
 Referencias oficiales: [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security), [Supabase Auth](https://supabase.com/docs/guides/auth/passwords), [OpenFreeMap](https://openfreemap.org/quick_start/), [MapLibre](https://maplibre.org/maplibre-gl-js/docs/), [Capacitor](https://capacitorjs.com/docs/getting-started/environment-setup), [Geolocation](https://capacitorjs.com/docs/apis/geolocation), [OpenRouteService](https://openrouteservice.org/).
+
+## Cuentas sin código de verificación
+
+El registro con correo y contraseña guarda la cuenta en Supabase Auth. Para que **no** se envíe correo de verificación, desactivar "Confirm email" en el panel de Supabase (Authentication > Sign In / Providers > Email). Con eso `signUp` devuelve la sesión y la app inicia sesión de inmediato; si el proyecto sigue exigiendo confirmación, la app muestra "Revisa tu correo". Compromiso: sin verificación cualquiera puede registrar un correo ajeno; la recuperación de contraseña sigue usando correo.
+
+## Estado de dependencias y pendientes conocidos
+
+Actualizado en la rama `arreglos`:
+
+- Dependencias de producción sin avisos de seguridad: `npm audit --omit=dev` reporta 0.
+- Recharts 3 (desde 2.15). Una prueba de navegador comprueba que el resumen pinta de verdad la superficie, el área y la curva, no solo el contenedor.
+- Capacitor CLI alineado con `@capacitor/core` y `@capacitor/android` (8.6.0); React 19.3.1, Vitest 5.1, lucide-react 1.x, Prettier y PGlite al día.
+- `tsc --noEmit` cubre ahora `e2e/`, `vite.config.ts`, `vitest.config.ts`, `playwright.config.ts`, `capacitor.config.ts` y `eslint.config.js`, no solo `src/`.
+- Una prueba falla si un diccionario acumula claves que nadie usa; las claves que se arman en tiempo de ejecución (`${concepto}Desc`) están declaradas en esa prueba.
+
+Pendiente, con el motivo:
+
+- `npm audit` informa 14 avisos moderados (`glob`, `minimatch`) que solo entran por herramientas de desarrollo: ESLint y la CLI de Capacitor. No viajan en la web ni en el APK. Cerrarlos exige ESLint 10, que obliga a `eslint-plugin-react-hooks` 7; ese plugin añade reglas del compilador de React y marca 9 puntos: `WorldMap.tsx` 176, 340, 452, 465, 633, 648, `useAuth.tsx` 76, `useMotion.ts` 14 y `useSettings.ts` 53 (`setState` dentro de un efecto y `Date.now()` durante el render). Corregirlos toca el mapa en vivo, que no se ha probado en un teléfono real, así que la subida queda para después de esa prueba.
+- TypeScript 7 no se adopta: `typescript-eslint` 8 declara compatibilidad hasta `<6.1.0`.
+- Los umbrales del sensor de movimiento (paso y umbral de quietud) están puestos a ojo; faltan medidas en un teléfono real para calibrarlos.
+- El exceso de distancia con ruido GPS se reduce pero no desaparece; es anterior a esta rama.
+- Los textos en quechua son un borrador que debe revisar una persona hablante.
+- Sin verificar en dispositivo real ni en un despliegue: GPS en exterior, pasos, voz, enlaces profundos, CSP de `vercel.json` y el registro contra el proyecto Supabase.
+
+## Integración PR #2 y SpeedTrack final
+
+GPS foreground y replay nativo usan el mismo `GpsFilter`: desplazamiento/tiempo, umbrales por modo, rechazo de saltos, precisión y timestamps. `coords.speed` es orientativo incluso cuando vuelve a cero tras una lectura positiva. El acelerómetro solo informa movimiento/pasos estimados en foreground; no bloquea GPS ni sustituye distancia. Las pausas y pérdidas de señal reinician el ancla.
+
+Android conserva background geolocation con parche versionado y diario nativo durable. El usuario puede activar el servicio para continuar con pantalla bloqueada; sin él, ocultar la app pausa el registro. Los pasos no se ofrecen como conteo de sesiones background. Hace falta validar GPS, batería, voz y permisos en un teléfono físico; las pruebas de replay no acreditan comportamiento de un fabricante concreto.
+
+Se conservan PKCE, RLS, HeiGIT, ETA, ES/EN/QU, caché/outbox, cálculos incrementales, borradores reducidos e icono/splash. Esta integración se publica únicamente en `origin/integration/pr2-final`. Resoluciones, validación y límites: [informe de integración](docs/integration-pr2.md).

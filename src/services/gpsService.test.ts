@@ -61,3 +61,59 @@ it("denied native permissions report failure without crashing", async () => {
   expect(error).toHaveBeenCalledOnce();
   expect(api.watchPosition).not.toHaveBeenCalled();
 });
+it("permission readiness precedes tracking and a transient error does not stop subsequent fixes", async () => {
+  const point = vi.fn(),
+    error = vi.fn(),
+    ready = vi.fn();
+  const stop = watchGps(point, error, ready);
+  expect(ready).not.toHaveBeenCalled();
+  await flush();
+  expect(ready).toHaveBeenCalledOnce();
+  const callback = api.watchPosition.mock.calls[0][1];
+  callback(null, { code: "timeout" });
+  callback({
+    timestamp: 1000,
+    coords: { latitude: 0, longitude: 0, accuracy: 5, speed: null },
+  });
+  expect(error).toHaveBeenCalledOnce();
+  expect(point).toHaveBeenCalledWith({
+    timestamp: 1000,
+    latitude: 0,
+    longitude: 0,
+    accuracy: 5,
+    speed: null,
+  });
+  stop();
+  callback({ timestamp: 2000, coords: {} });
+  expect(point).toHaveBeenCalledOnce();
+});
+it("approximate-only permission warns but keeps watching", async () => {
+  api.requestPermissions.mockResolvedValue({
+    location: "prompt",
+    coarseLocation: "granted",
+  });
+  const error = vi.fn();
+  watchGps(vi.fn(), error);
+  await flush();
+  expect(error).toHaveBeenCalledOnce();
+  expect(api.watchPosition).toHaveBeenCalledOnce();
+});
+
+it("a watcher resolving after stop is removed and cannot deliver late fixes", async () => {
+  let resolveWatch!: (id: string) => void;
+  api.watchPosition.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveWatch = resolve;
+      }),
+  );
+  const point = vi.fn();
+  const stop = watchGps(point, vi.fn());
+  await flush();
+  stop();
+  resolveWatch("late-watch");
+  await flush();
+  expect(api.clearWatch).toHaveBeenCalledExactlyOnceWith({ id: "late-watch" });
+  api.watchPosition.mock.calls[0][1]({ timestamp: 1000, coords: {} });
+  expect(point).not.toHaveBeenCalled();
+});

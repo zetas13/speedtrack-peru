@@ -64,7 +64,7 @@ export function useActivityStore(owner: string) {
     (s: Session) => {
       const owned = { ...s, user_id: owner };
       let persisted = publish(mergeSessions(current.current, [owned]));
-      if (owner !== "local-user") {
+      if (owner !== "local-user" && !s.demo) {
         try {
           enqueue(owned);
           persisted = true;

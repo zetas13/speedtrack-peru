@@ -1,6 +1,14 @@
 import type { TranslationKey } from "./es";
 // Cusco-Collao draft. Requires native-speaker linguistic review.
 export const qu: Record<TranslationKey, string> = {
+  simulation: "Yachapayay",
+  simulatedAccuracy: "Mana tupunchu · yachapayasqa willakuy",
+  realOnly: "Chiqaq kuyuykunalla. Qhawarichiykuna yupayniykita mana tikranchu.",
+  simulatedTime: "Yachapayasqa pacha",
+  simulated: "Qhawarichiy",
+  demoInfo:
+    "45 chiqaq segundo · kuyuy pacha ×40, antawapi ×1. Yachapayasqa willakuy.",
+  demo: "Qhawarichiy purisqata llamk’achiy",
   authEmailExists:
     "Kay correoqa qillqasqañam. Yaykuy utaq pakasqa rimayniykita musuqyachiy.",
   authEmailInvalid: "Kichay atisqayki allin correota qillqay.",
@@ -24,6 +32,8 @@ export const qu: Record<TranslationKey, string> = {
   authUnknown:
     "Manam rurayta tukuyta atikunchu. Yapamanta ruray; hinallapuni kaptin pantaypa yupayninta kamachiqman willay.",
   authReference: "Pantaypa yupaynin: {code} ({status})",
+  authAccountCreated:
+    "Willakuyniyki paqarichisqañam. Qallarisqañam, willakuyniykikunaqa kay willakuypi waqaychasqa kanqa.",
   authSignupSent:
     "Cuentaykita takyachinaykipaq correoykita qhaway. Cuenta kachkasqa kaptinqa yaykuy utaq pakasqa rimayta musuqyachiy.",
   authRecoverySent:
@@ -55,10 +65,6 @@ export const qu: Record<TranslationKey, string> = {
   password: "Pakana simi (8 sanampamanta)",
   saveProfile: "Riqsichiyniyta waqaychay",
   logout: "Yupaymanta lluqsiy",
-  checkEmail:
-    "Rurasqa. Correo nisqaykita qhaway, chiqaqchanapaq mañakusqa kaptin.",
-  accountError:
-    "Mana rurasqachu. Willakuyniykita, tinkikuyniykita, yupaypa churaynintawan qhaway.",
   cloudSetup:
     "Kay dispositivollapi llamk’ayta atinki. Yupaykunapaq, tinkuchinapaqpas Supabase nisqata churay.",
   privacyInfo:
@@ -66,7 +72,7 @@ export const qu: Record<TranslationKey, string> = {
   finishBeforeAccount: "Yupayta manaraq tikraspa kuyuyta tukuy.",
   importLocal: "Kay dispositivopi purisqaykunata apamuy",
   importInfo:
-    "Kay dispositivopi chiqaq purisqallata yupayniykiman apamuy. Qhawarichiykunata mana apamunchu. Qampa willakuyniyki kaptinlla ruray.",
+    "Kay dispositivopi chiqaq purisqallata yupayniykiman apamuy. Qampa willakuyniyki kaptinlla ruray.",
   syncing: "Tinkuchichkan…",
   synced: "Purisqakuna tinkuchisqa",
   syncPending: "Tinkuchiy suyasqa · yapamanta ruray",
@@ -94,24 +100,17 @@ export const qu: Record<TranslationKey, string> = {
   trafficFlow: "Allin purichkan",
   trafficModerate: "Pisillata hark’asqa",
   trafficCongested: "Anchata hark’asqa",
-  trafficIncidents: "Sasachakuykuna, wichqasqa ñankuna",
   offRoute: "Ñanmanta lluqsirqanki · yapamanta yupay",
   mapError: "Mapa mana kanchu. GPS waqaychayqa qatinmi.",
   searchDestination: "Chayanata maskay",
   search: "Maskay",
   searchError: "Mana tarisqachu utaq servicio mana llamk’anchu.",
-  total: "Chiqaq llapan",
   monthly: "Kay killapi",
   statistics: "Yupaykuna",
-  realOnly: "Chiqaq kuyuykunalla. Qhawarichiykuna yupayniykita mana tikranchu.",
   paceChart: "Puriy pacha — pacha",
-  nearArrival: "Chayanaykiman qayllaykuchkanki.",
   gpsLost: "GPS willakuy mawk’a. Musuq tupuyta suyachkan.",
-  offlineInfo: "Mana tinkisqa: dispositivopi waqaychachkan.",
   routeDistance: "Ñanpa karu kaynin",
-  privacy: "Pakasqa kay",
   physicsFormula: "Chawpi utqay kay = llapan purisqa / kuyusqa pacha",
-  simulation: "Yachapayay",
   greetUser: "Rimaykullayki, {name}",
   settingsPending: "Churaykuna kaypi waqaychasqa; tinkuchiy suyasqa.",
   app: "SpeedTrack Perú",
@@ -142,11 +141,6 @@ export const qu: Record<TranslationKey, string> = {
   goal: "Munaspalla chayana",
   noGoal: "Mana chayanayuq",
   goalUnit: "Kilometropi chayana",
-  demo: "Qhawarichiy purisqata llamk’achiy",
-  demoSport: "Kuyuy qhawarichiy",
-  demoVehicle: "Antawa qhawarichiy",
-  demoInfo:
-    "45 chiqaq segundo · kuyuy pacha ×40, antawapi ×1. Yachapayasqa willakuy.",
   gpsInfo:
     "Kasqaykiwan purisqaykita tupuyku, siq’iykupas. Qallarispa utaq mapata chawpichaspa saqiyta mañakuyku. Llamk’anata kichasqa hap’iy: pakaspa samakun.",
   start: "Qallariy",
@@ -155,7 +149,6 @@ export const qu: Record<TranslationKey, string> = {
   finish: "Tukuy",
   active: "Kuyuchkan",
   paused: "Samachkan",
-  simulated: "Qhawarichiy",
   realGps: "Chiqaq GPS",
   time: "Pacha",
   distance: "Karu kay",
@@ -174,8 +167,6 @@ export const qu: Record<TranslationKey, string> = {
   noSplits: "Sapa kilometrota tukuspa pachankuna rikurinqa.",
   kilometers: "Tukusqa kilometrokuna",
   route: "Purisqayki",
-  conceptual: "Yuyaypi ñan · mana mapayuq",
-  noRoute: "Ñanqa ñawpaq tupuykunawan rikurinqa.",
   live: "Kunanpacha",
   chart: "Utqay kay — pacha",
   seconds: "Pacha (s)",
@@ -230,10 +221,8 @@ export const qu: Record<TranslationKey, string> = {
   uncertaintyDesc:
     "GPS, tupuy, muyuriqpas yupaykunata tikran. Telefonopa tupusqanqa qayllachayllam.",
   accuracy: "GPS tarisqanpa allin kaynin",
-  simulatedAccuracy: "Mana tupunchu · yachapayasqa willakuy",
   unknownAccuracy: "Mana tupusqayuq",
   locationUnavailable: "Kasqayki mana tarisqachu.",
-  useDemo: "Qhawarichiyta llamk’achiy",
   config: "Churaykuna",
   general: "Llapanpaq",
   language: "Simi",
@@ -247,7 +236,6 @@ export const qu: Record<TranslationKey, string> = {
   voice: "Rimay yanapaq",
   enabled: "Kichasqa",
   disabled: "Wichqasqa",
-  voiceLanguage: "Rimay simi",
   kilometerAlerts: "Sapa kilometropi willay",
   safetyAlerts: "Qhawarikuy willaykuna",
   approachingAlerts: "Saywaman qayllaykuspa willay",
@@ -265,7 +253,7 @@ export const qu: Record<TranslationKey, string> = {
     "“SpeedTrack, ¿hayk’atañan purini?” · “Kuyuyta samachiy.” · “¿Hayk’an utqay kayniy?”",
   about: "Llamk’aymanta",
   aboutText:
-    "SpeedTrack Perú yachaypaq rurana Física I, Ingeniería de Sistemas nisqapaq rurasqa. Chiqaq, yachapayasqa puriykunawan kuyuy yachayta llamk’achin.",
+    "SpeedTrack Perú yachaypaq rurana Física I, Ingeniería de Sistemas nisqapaq rurasqa. Chiqaq puriykikunawan kuyuy yachayta llamk’achin.",
   disclaimer:
     "SpeedTrack Perú mana chiqaqchasqa tupunakunata, kamachiqpa antawa sistemankunata, profesional tupunakunatapas rantinchu.",
   local: "Kay dispositivopi waqaychasqa willakuy",
@@ -291,14 +279,27 @@ export const qu: Record<TranslationKey, string> = {
   accelerateVoice: "Sinchi utqayachiy tarisqa.",
   timeVoice: "Kimsa chunka minutoñam kuyuchkanki.",
   bestVoice: "Musuq aswan allin puriy pacha.",
-  endDemo: "Qhawarichiy tukukuptin kikillanmanta waqaychakun.",
   sessionActive: "Huk puriy qallarisqa kachkan. Ura siq’imanta kutiy.",
   gpsWaiting: "GPS señal nisqata maskachkan…",
+  gpsReady: "GPS listoña",
+  backgroundTitle: "SpeedTrack Perú — puriy kachkan",
+  backgroundNotification:
+    "GPS llamk'achkan. Purisqaykiman kutinaykipaq ñit'iy.",
+  backgroundChoice: "Pantalla wisq'asqawanpas qillqay",
+  backgroundExplanation:
+    "Kayta akllaspaqa SpeedTrack tarisqaykita kay puriypi qillqanqa, pantalla wisq'asqapas huk app kichasqapas. Purisqaykita kay telefonopi waqaychanqa, tukuspa cuentaykiman apachinqa. GPS llamk'achkaptin willakuy rikurinqa.",
+  backgroundDecline:
+    "Mana akllaspaqa app kichasqallawan qillqayta atinki. Qallariypi permisokunata mañakunqa.",
+  backgroundInfo:
+    "Android qhipapi qillqachkan. Pantallata wisq'ayta atinki; app nisqata ama kallpawan sayachiychu.",
+  backgroundPaused:
+    "Puriy samachkan. GPS sayasqa; app nisqapi yapamanta qallariy.",
+  backgroundError:
+    "Qhipapi qillqayta mana allinta takyachiy atikunchu. Chiqap taripayta, willakuykunata, waqaychana kititapas qhaway. Ñawpaqpi qillqachkaptinqa app kichasqata saqiy. Kutichina datokuna waqaychasqa kachkan.",
+  emptyActivity:
+    "Mana allin kuyuyta qillqasqachu. Puriy mana waqaychasqachu. Chiqap taripay permisota qhaway, GPS listo kanan kama suyay manaraq purispa.",
   seed: "Ñawpaq churasqa qhawarichiy",
-  simulatedTime: "Yachapayasqa pacha",
   best: "Ñawpaqman puriyniyki kaypi qallarin",
-  sampleLabel: "Qhawarichiy puriykuna",
-  resetView: "Qallariyman kutiy",
   instantaneousSpeed: "Chay pachapi utqay kay",
   loading: "Apamuchkan…",
   mapLegend: "Q’umir: purisqa · anqas/yuraq: puchuq ñan · wiphala: chayana",
@@ -311,6 +312,13 @@ export const qu: Record<TranslationKey, string> = {
   paceVoice: "Sapa kilometropi {minutes} minuto {seconds} segundo.",
   remainingVoice: "{value} kilometro puchuchkan.",
   etaVoice: "{minutes} minutupi chayankiman.",
+  motionSensor: "Kuyuy sensor",
+  motionMoving: "kuyuchkan",
+  motionStill: "mana kuyuchkanchu",
+  steps: "Pasukuna",
+  stepsEstimate: "≈ {value} m pasukunamanta yupasqa",
+  motionNoGps:
+    "Sensorqa kuyuyta rikun, ichaqa GPSqa manaraqmi sut'inchanchu. Kichasqa kitiman lluqsiy.",
 };
 export const quechuaVariant = {
   name: "Quechua Cusco-Collao",

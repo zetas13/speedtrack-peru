@@ -10,6 +10,7 @@ export interface GpsPoint {
 export function watchGps(
   onPoint: (point: GpsPoint) => void,
   onError: () => void,
+  onPermissionReady: () => void = () => {},
 ): () => void {
   if (Capacitor.isNativePlatform()) {
     let stopped = false;
@@ -18,6 +19,7 @@ export function watchGps(
       try {
         const permission = await Geolocation.requestPermissions();
         if (stopped) return;
+        onPermissionReady();
         if (
           permission.location !== "granted" &&
           permission.coarseLocation !== "granted"
@@ -25,6 +27,9 @@ export function watchGps(
           onError();
           return;
         }
+        // Con solo ubicación aproximada Android entrega precisión de cientos de
+        // metros y el filtro descarta todo: se avisa en vez de fallar en silencio.
+        if (permission.location !== "granted") onError();
         watchId = await Geolocation.watchPosition(
           {
             enableHighAccuracy: true,
@@ -67,6 +72,7 @@ export function watchGps(
   const id = navigator.geolocation.watchPosition(
     (p) => {
       if (stopped) return;
+      onPermissionReady();
       onPoint({
         latitude: p.coords.latitude,
         longitude: p.coords.longitude,
@@ -76,7 +82,10 @@ export function watchGps(
       });
     },
     () => {
-      if (!stopped) onError();
+      if (!stopped) {
+        onPermissionReady();
+        onError();
+      }
     },
     { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
   );

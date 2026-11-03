@@ -25,7 +25,7 @@ Proyecto: `hpcpikyxntyvpynzcvyt`. Rama: `feature/speedtrack-v2`.
 ## Verificaciones
 
 - Vitest: 60 pruebas, 11 archivos, incluyendo SQL/RLS en PGlite.
-- Playwright: 13 casos funcionales con servicios simulados, más el recorrido real de Chromium descrito arriba.
+- Playwright: 14 casos funcionales con servicios simulados, más el recorrido real de Chromium descrito arriba.
 - ESLint y TypeScript: sin errores.
 - Build web y Android `assembleDebug`: correctos. Avisos no bloqueantes de tamaño de chunks, futura carga nativa de configuración Vite y repositorios Gradle `flatDir`.
 - El primer intento Android falló por `uv_os_get_passwd` dentro del sandbox de Windows. La ejecución autorizada fuera del sandbox completó Capacitor y Gradle.
@@ -35,4 +35,4 @@ Proyecto: `hpcpikyxntyvpynzcvyt`. Rama: `feature/speedtrack-v2`.
 
 ## Repetir
 
-Ver comandos en README y `scripts/validate-supabase.mjs --linked`. La clave administrativa se obtiene de la CLI en memoria para preparación y limpieza, nunca se agrega a `.env`, al frontend, al APK ni a Git. `.env`, APK y estado temporal de la CLI están ignorados.
+Ver comandos en README y `scripts/validate-supabase.mjs --linked`. El script exige `SPEEDTRACK_TEST_PROJECT_REF` igual al proyecto enlazado, para no ejecutarse nunca contra el proyecto con cuentas reales. La clave administrativa se obtiene de la CLI en memoria para preparación y limpieza, nunca se agrega a `.env`, al frontend, al APK ni a Git. `.env`, APK y estado temporal de la CLI están ignorados.

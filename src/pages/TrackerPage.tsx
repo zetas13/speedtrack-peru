@@ -1,4 +1,5 @@
 import { gpsPolicy } from "../utils/gpsFilter";
+import { backgroundSupported } from "../services/backgroundTracking";
 import { useState } from "react";
 import {
   Bike,
@@ -26,11 +27,14 @@ import {
 import { duration, number, pace } from "../utils/formatters";
 interface Props {
   blockedStart?: boolean;
+  trackingBusy?: boolean;
+  backgroundActive?: boolean;
   vehicle: boolean;
   session: Session | null;
   paused: boolean;
   gpsError: boolean;
   waitingFix?: boolean;
+  motion: { supported: boolean; moving: boolean; steps: number };
   gpsAccuracy?: number | null;
   settings: Settings;
   setLimit: (v: number) => void;
@@ -39,6 +43,7 @@ interface Props {
     demo: boolean,
     goal: number | null,
     navigation?: NavigationPlan,
+    background?: boolean,
   ) => void;
   updateNavigation: (plan: NavigationPlan | undefined) => void;
   finish: () => void;
@@ -46,12 +51,15 @@ interface Props {
 }
 export function TrackerPage({
   blockedStart,
+  trackingBusy,
+  backgroundActive,
   vehicle,
   session,
   paused,
   gpsError,
   gpsAccuracy,
   waitingFix,
+  motion,
   settings,
   setLimit,
   start,
@@ -61,16 +69,20 @@ export function TrackerPage({
 }: Props) {
   const { t, language } = useI18n();
   const [type, setType] = useState<ActivityType>("run"),
-    [demo, setDemo] = useState(false),
     [goal, setGoal] = useState("");
+  const [demo, setDemo] = useState(false);
   const [navigation, setNavigation] = useState<NavigationPlan>();
+  const [background, setBackground] = useState(false);
   const s =
     session && (session.type === "vehicle") === vehicle ? session : null;
   const current = s?.measurements.at(-1),
-    stale = !s?.demo && !!current && (s?.duration ?? 0) - current.elapsed > 10,
+    stale = !!current && (s?.duration ?? 0) - current.elapsed > 10,
     speed = paused || stale || waitingFix ? 0 : (current?.speed ?? 0),
     status = classifySpeedStatus(speed, s?.limit ?? settings.speed_limit);
   const cycling = (s?.type ?? type) === "bike";
+  const onFoot = s?.type === "walk" || s?.type === "run";
+  // Longitud de paso media: heurística, no una medición.
+  const stride = s?.type === "run" ? 1.0 : 0.72;
   return (
     <div className={s ? `live-activity mode-${s.type}` : undefined}>
       <PageHeading
@@ -150,9 +162,30 @@ export function TrackerPage({
               </label>
             )}
             <Toggle label={t("demo")} checked={demo} onChange={setDemo} />
+            {!demo && backgroundSupported() && (
+              <div className="notice">
+                <div>
+                  <p>{t("backgroundExplanation")}</p>
+                  <Toggle
+                    label={t("backgroundChoice")}
+                    checked={background}
+                    onChange={setBackground}
+                  />
+                  <p>{t("backgroundDecline")}</p>
+                </div>
+              </div>
+            )}
             <div className="notice">
               <Radio size={16} />
-              <p>{t(demo ? "demoInfo" : "gpsInfo")}</p>
+              <p>
+                {t(
+                  demo
+                    ? "demoInfo"
+                    : background && backgroundSupported()
+                      ? "backgroundInfo"
+                      : "gpsInfo",
+                )}
+              </p>
             </div>
             <button
               className="primary-button"
@@ -164,9 +197,10 @@ export function TrackerPage({
                     ? Number(goal)
                     : null,
                   navigation,
+                  background,
                 )
               }
-              disabled={!!session || blockedStart}
+              disabled={!!session || blockedStart || trackingBusy}
             >
               <Play size={19} fill="currentColor" />
               {t(vehicle ? "startVehicle" : "startActivity")}
@@ -183,10 +217,8 @@ export function TrackerPage({
           </Section>
           <div className="preview-orbit">
             <Navigation size={32} />
-            <span>
-              {t(demo ? (vehicle ? "demoVehicle" : "demoSport") : "realGps")}
-            </span>
-            <small>{t(demo ? "endDemo" : "gpsInfo")}</small>
+            <span>{t(demo ? "simulated" : "realGps")}</span>
+            <small>{t("gpsInfo")}</small>
           </div>
         </>
       ) : (
@@ -200,7 +232,32 @@ export function TrackerPage({
               {t(s.demo ? "simulatedTime" : "time")} {duration(s.duration)}
             </span>
           </div>
+          {backgroundActive && (
+            <p className="notice">
+              {t(paused ? "backgroundPaused" : "backgroundInfo")}
+            </p>
+          )}
           {stale && <p className="notice">{t("gpsLost")}</p>}
+          {s && motion.supported && (
+            <p className="muted">
+              {t("motionSensor")}:{" "}
+              {t(motion.moving ? "motionMoving" : "motionStill")}
+              {onFoot && (
+                <>
+                  {" · "}
+                  {t("steps")} {motion.steps} ·{" "}
+                  {t("stepsEstimate", {
+                    value: Math.round(motion.steps * stride),
+                  })}
+                </>
+              )}
+            </p>
+          )}
+          {s && motion.supported && motion.moving && (stale || waitingFix) && (
+            <p className="notice" role="status">
+              {t("motionNoGps")}
+            </p>
+          )}
           {(gpsAccuracy ?? current?.accuracy) != null && (
             <p className="muted">
               {t("accuracy")}: ±{" "}
@@ -217,11 +274,22 @@ export function TrackerPage({
               <p>{t("locationUnavailable")}</p>
             </div>
           )}
-          {!s.demo && !s.measurements.length && !gpsError && (
+          {!s.demo && waitingFix && !gpsError && !paused && (
             <p className="notice" role="status">
               {t("gpsWaiting")}
             </p>
           )}
+          {!s.demo &&
+            !waitingFix &&
+            !paused &&
+            !stale &&
+            !gpsError &&
+            gpsAccuracy != null &&
+            gpsAccuracy <= gpsPolicy.maxAccuracyM && (
+              <p className="notice" role="status">
+                {t("gpsReady")}
+              </p>
+            )}
           <div className="activity-map">
             {!vehicle && (
               <div className="live-summary sport-summary card">
@@ -271,11 +339,19 @@ export function TrackerPage({
                     </div>
                   )}
                   <div className="session-controls">
-                    <button className="secondary-button" onClick={togglePause}>
+                    <button
+                      className="secondary-button"
+                      onClick={togglePause}
+                      disabled={trackingBusy}
+                    >
                       {paused ? <Play size={17} /> : <Pause size={17} />}
                       {t(paused ? "resume" : "pause")}
                     </button>
-                    <button className="finish-button" onClick={finish}>
+                    <button
+                      className="finish-button"
+                      onClick={finish}
+                      disabled={trackingBusy}
+                    >
                       <Square size={15} fill="currentColor" />
                       {t("finish")}
                     </button>
